@@ -1,0 +1,36 @@
+services:
+  # 1. Backend Express Web Service
+  - type: web
+    name: quicklabour-backend
+    runtime: node
+    plan: free
+    rootDir: quicklabour-backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        sync: false # User will input their MongoDB Atlas connection string during setup
+      - key: JWT_SECRET
+        generateValue: true # Render will automatically generate a cryptographically secure random value
+      - key: PORT
+        value: 5000
+
+  # 2. Frontend React (Vite) Static Site
+  - type: static
+    name: quicklabour-react
+    plan: free
+    rootDir: quicklabour-react
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    routes:
+      # Rewrite rule to handle React Router single page application (SPA) routing
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Link the frontend's build variable VITE_API_URL to the backend service's URL
+      - key: VITE_API_URL
+        fromService:
+          name: quicklabour-backend
+          type: web
+          property: host

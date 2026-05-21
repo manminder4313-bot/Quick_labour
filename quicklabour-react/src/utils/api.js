@@ -1,4 +1,8 @@
-const BASE_URL = 'http://localhost:5000/api';
+let apiEnvUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+if (apiEnvUrl && !apiEnvUrl.endsWith('/api')) {
+  apiEnvUrl = apiEnvUrl.replace(/\/$/, '') + '/api';
+}
+const BASE_URL = apiEnvUrl;
 
 // Helper to get headers
 const getHeaders = (isMultipart = false) => {

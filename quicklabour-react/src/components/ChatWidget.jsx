@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-const BASE_URL = 'http://localhost:5000/api';
+let apiEnvUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+if (apiEnvUrl && !apiEnvUrl.endsWith('/api')) {
+  apiEnvUrl = apiEnvUrl.replace(/\/$/, '') + '/api';
+}
+const BASE_URL = apiEnvUrl;
 
 const ChatWidget = ({ currentUserId, currentUserName, currentUserRole, currentUserAvatar }) => {
   const [isOpen, setIsOpen] = useState(false);
