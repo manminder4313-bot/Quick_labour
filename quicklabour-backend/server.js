@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import User from './models/User.js';
 import Review from './models/Review.js';
@@ -12,6 +14,9 @@ import adminRoutes from './routes/admin.js';
 import messageRoutes from './routes/messages.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Connect to Database
 connectDB().then(() => {
@@ -164,7 +169,7 @@ const seedDatabase = async () => {
 
 
 // Base API route
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
   res.json({ message: '🚀 QuickLabour Express API is running!' });
 });
 
@@ -175,6 +180,18 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes);
+
+// Serve Frontend Static Files
+const distPath = path.join(__dirname, '../quicklabour-react/dist');
+app.use(express.static(distPath));
+
+// Catch-all route to serve the React app's index.html for client-side routing
+app.get('*', (req, res, next) => {
+  if (req.originalUrl.startsWith('/api')) {
+    return next();
+  }
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 // Error Handling Middlewares
 app.use((req, res, next) => {

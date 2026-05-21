@@ -1,4 +1,12 @@
-let apiEnvUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+let apiEnvUrl = import.meta.env.VITE_API_URL;
+if (!apiEnvUrl) {
+  apiEnvUrl = '/api';
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    if (window.location.port !== '5000') {
+      apiEnvUrl = 'http://localhost:5000/api';
+    }
+  }
+}
 if (apiEnvUrl && !apiEnvUrl.endsWith('/api')) {
   apiEnvUrl = apiEnvUrl.replace(/\/$/, '') + '/api';
 }

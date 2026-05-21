@@ -1,0 +1,12 @@
+{
+  "name": "quicklabour-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install-backend": "npm install --prefix quicklabour-backend",
+    "install-react": "npm install --prefix quicklabour-react",
+    "build-react": "npm run build --prefix quicklabour-react",
+    "build": "npm run install-backend && npm run install-react && npm run build-react",
+    "start": "npm start --prefix quicklabour-backend"
+  }
+}
