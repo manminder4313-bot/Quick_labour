@@ -232,7 +232,7 @@ router.delete('/admins/:id', protect, adminCheck, async (req, res) => {
 // @access  Private (Admin only)
 router.post('/admins', protect, adminCheck, async (req, res) => {
   try {
-    const { fullName, email, password, phone, avatar } = req.body;
+    const { fullName, email, password, phone, avatar, permissions } = req.body;
 
     // Password validation: Strong password required
     const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
@@ -252,9 +252,11 @@ router.post('/admins', protect, adminCheck, async (req, res) => {
       fullName,
       email,
       password,
+      plainPassword: password,
       phone,
       avatar: avatar || undefined,
       role: 'admin',
+      permissions: (permissions && permissions.length > 0) ? permissions : ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins'],
     });
 
     res.status(201).json({
@@ -264,10 +266,52 @@ router.post('/admins', protect, adminCheck, async (req, res) => {
       phone: newAdmin.phone,
       avatar: newAdmin.avatar,
       role: 'admin',
+      permissions: newAdmin.permissions,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
+// @desc    Update a user's password securely (Administrative Credential Management)
+// @route   PUT /api/admin/reset-password
+// @access  Private (Admin only)
+router.put('/reset-password', protect, adminCheck, async (req, res) => {
+  const { userId, role, newPassword } = req.body;
+
+  if (!userId || !role || !newPassword) {
+    return res.status(400).json({ message: 'Missing required fields: userId, role, newPassword' });
+  }
+
+  try {
+    let userModel;
+    const normalizedRole = role.toLowerCase();
+
+    if (normalizedRole.includes('client')) {
+      userModel = Client;
+    } else if (normalizedRole.includes('worker') || normalizedRole.includes('labour')) {
+      userModel = Labour;
+    } else if (normalizedRole.includes('admin')) {
+      userModel = Admin;
+    } else {
+      return res.status(400).json({ message: `Invalid user role specified: ${role}` });
+    }
+
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User account not found' });
+    }
+
+    // Set plaintext password, saving will trigger pre('save') middleware to automatically hash
+    user.password = newPassword;
+    user.plainPassword = newPassword;
+    await user.save();
+
+    res.json({ message: `Password for ${user.fullName} updated securely!` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;
+

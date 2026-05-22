@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../utils/api';
+import { api, LABOUR_INDUSTRIES } from '../utils/api';
 
 
 const Login = () => {
@@ -22,7 +22,8 @@ const Login = () => {
   const [idFileName, setIdFileName] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [occupation, setOccupation] = useState('Professional Plumber');
+  const [occupation, setOccupation] = useState('Construction Labour');
+  const [selectedIndustry, setSelectedIndustry] = useState('Construction Labour');
   const [showPassword, setShowPassword] = useState(false);
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -36,6 +37,11 @@ const Login = () => {
   // Notification States
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  
+  // Geolocation and Live Location states
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
+  const [isLocating, setIsLocating] = useState(false);
   
   const navigate = useNavigate();
 
@@ -144,6 +150,8 @@ const Login = () => {
           password: signUpPassword,
           phone,
           address,
+          latitude,
+          longitude,
           role: activeTab,
           occupation: activeTab === 'worker' ? occupation : '',
           avatar: avatarBase64 || undefined,
@@ -180,6 +188,46 @@ const Login = () => {
     const newOtp = Math.floor(1000 + Math.random() * 9000).toString();
     setMockOtp(newOtp);
     setOtpNotification(`📱 SMS Received on ${phone}: Your new QuickLabour verification OTP is: ${newOtp}`);
+  };
+
+  // Fetch current GPS location and automatically reverse geocode to human address
+  const handleUseLiveLocation = () => {
+    if (!navigator.geolocation) {
+      alert('❌ Geolocation is not supported by your browser.');
+      return;
+    }
+    
+    setIsLocating(true);
+    
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        setLatitude(lat);
+        setLongitude(lon);
+        
+        try {
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+          const data = await response.json();
+          if (data && data.display_name) {
+            setAddress(data.display_name);
+          } else {
+            setAddress(`GPS Location: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+          }
+        } catch (error) {
+          console.error("Reverse geocoding error:", error);
+          setAddress(`GPS Location: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        alert(`❌ Failed to retrieve your location: ${error.message}`);
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
 
@@ -373,7 +421,27 @@ const Login = () => {
                     {/* Address */}
                     <div className="col-12">
                       <div className="form-input-group mb-0">
-                        <label>Complete Address</label>
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <label className="mb-0">Complete Address</label>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary py-1 px-2 rounded-pill fw-bold border-1.5"
+                            style={{ fontSize: '0.75rem', borderColor: '#0d6efd' }}
+                            onClick={handleUseLiveLocation}
+                            disabled={isLocating}
+                          >
+                            {isLocating ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" style={{ width: '12px', height: '12px' }}></span>
+                                Locating...
+                              </>
+                            ) : (
+                              <>
+                                <i className="bi bi-geo-alt-fill me-1"></i> Use Live Location
+                              </>
+                            )}
+                          </button>
+                        </div>
                         <input
                           type="text"
                           placeholder="e.g. Flat 302, Sea Breeze, Bandra West, Mumbai"
@@ -384,26 +452,82 @@ const Login = () => {
                       </div>
                     </div>
 
-                    {/* Occupation / Skills (Worker Only) */}
+                    {/* Occupation / Skills (Worker Only) — Two-step visual picker */}
                     {activeTab === 'worker' && (
                       <div className="col-12">
                         <div className="form-input-group mb-0">
                           <label>Primary Occupation / Trade</label>
-                          <select
-                            className="form-select border-1.5 p-2 rounded-12 text-muted"
-                            style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }}
-                            value={occupation}
-                            onChange={(e) => setOccupation(e.target.value)}
-                            required
-                          >
-                            <option value="Professional Plumber">Plumber</option>
-                            <option value="Master Painter">Painter</option>
-                            <option value="Electrician">Electrician</option>
-                            <option value="Carpenter">Carpenter</option>
-                            <option value="Mason / Concrete Worker">Mason / Concrete Worker</option>
-                            <option value="General Labour">General Labour</option>
-                            <option value="Cleaning Specialist">Cleaning Specialist</option>
-                          </select>
+
+                          {/* Step 1 — Industry selector */}
+                          <div style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                              Step 1 — Select Industry
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {Object.entries(LABOUR_INDUSTRIES).map(([industry, info]) => (
+                                <button
+                                  key={industry}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedIndustry(industry);
+                                    setOccupation(info.specialties[0].name);
+                                  }}
+                                  style={{
+                                    padding: '5px 12px',
+                                    borderRadius: 20,
+                                    border: selectedIndustry === industry ? 'none' : '1.5px solid #e2e8f0',
+                                    background: selectedIndustry === industry ? 'linear-gradient(135deg,#0d6efd,#0b5ed7)' : '#f8fafc',
+                                    color: selectedIndustry === industry ? '#fff' : '#475569',
+                                    fontWeight: selectedIndustry === industry ? 700 : 500,
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.18s',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {info.icon} {industry}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Step 2 — Specialty pills */}
+                          {selectedIndustry && (
+                            <div>
+                              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                                Step 2 — Select Your Trade
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {LABOUR_INDUSTRIES[selectedIndustry].specialties.map((spec) => (
+                                  <button
+                                    key={spec.name}
+                                    type="button"
+                                    onClick={() => setOccupation(spec.name)}
+                                    style={{
+                                      padding: '7px 14px',
+                                      borderRadius: 10,
+                                      border: occupation === spec.name ? 'none' : '1.5px solid #e2e8f0',
+                                      background: occupation === spec.name ? 'linear-gradient(135deg,#1db97a,#16a34a)' : '#f8fafc',
+                                      color: occupation === spec.name ? '#fff' : '#334155',
+                                      fontWeight: occupation === spec.name ? 700 : 500,
+                                      fontSize: '0.82rem',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.18s',
+                                    }}
+                                  >
+                                    {occupation === spec.name && '✓ '}{spec.name}
+                                  </button>
+                                ))}
+                              </div>
+                              {/* Selected summary */}
+                              <div style={{ marginTop: 10, padding: '8px 14px', background: '#f0fdf4', borderRadius: 10, border: '1.5px solid #bbf7d0', fontSize: '0.82rem', color: '#15803d', fontWeight: 600 }}>
+                                ✅ Selected: <strong>{occupation}</strong> &nbsp;·&nbsp; ₹{LABOUR_INDUSTRIES[selectedIndustry]?.specialties.find(s => s.name === occupation)?.baseRate || '—'}/day base rate
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Hidden real input for form validation */}
+                          <input type="hidden" value={occupation} required />
                         </div>
                       </div>
                     )}

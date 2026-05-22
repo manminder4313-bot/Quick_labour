@@ -18,7 +18,9 @@ const ClientDashboard = () => {
   const fetchJobs = async () => {
     try {
       const data = await api.getJobs();
-      setDbJobs(data);
+      // Sort jobs by createdAt descending so that newer posts show at the top
+      const sorted = [...(data || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setDbJobs(sorted);
     } catch (error) {
       console.error('Error fetching jobs:', error.message);
     } finally {
@@ -66,6 +68,39 @@ const ClientDashboard = () => {
       .filter(j => j.status === 'Accepted' || j.status === 'Completed')
       .reduce((acc, curr) => acc + (curr.money || 0), 0)
       .toLocaleString('en-IN')
+  };
+
+  // Rating Modal States
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState(null);
+  const [ratingValue, setRatingValue] = useState(5);
+  const [reviewText, setReviewText] = useState('');
+  const [submittingRating, setSubmittingRating] = useState(false);
+
+  const openCompleteModal = (jobId) => {
+    setSelectedJobId(jobId);
+    setRatingValue(5);
+    setReviewText('');
+    setShowRatingModal(true);
+  };
+
+  const handleCompleteJobSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedJobId) return;
+    
+    setSubmittingRating(true);
+    try {
+      await api.completeJob(selectedJobId, ratingValue, reviewText);
+      setHireMessage(`🎉 Thank you! The job has been completed and your feedback has been sent to the worker!`);
+      setShowRatingModal(false);
+      setSelectedJobId(null);
+      fetchJobs();
+      setTimeout(() => setHireMessage(''), 5000);
+    } catch (error) {
+      alert('❌ Error completing job: ' + error.message);
+    } finally {
+      setSubmittingRating(false);
+    }
   };
 
   const handleApproveHire = async (jobId, workerId, workerName, rateValue) => {
@@ -157,7 +192,7 @@ const ClientDashboard = () => {
             <div className="dashboard-card h-100">
               <div className="dashboard-card-title">
                 <span>Active Service Requests</span>
-                <span className="badge bg-primary rounded-pill small" style={{ fontSize: '0.8rem' }}>2 Postings</span>
+                <span className="badge bg-primary rounded-pill small" style={{ fontSize: '0.8rem' }}>{activeJobs.length} {activeJobs.length === 1 ? 'Posting' : 'Postings'}</span>
               </div>
 
               {activeJobs.map(job => (
@@ -185,7 +220,18 @@ const ClientDashboard = () => {
                       </div>
                       <div className="text-end">
                         <div className="fw-800 text-success mb-1" style={{ fontSize: '1.05rem' }}>{job.hiredWorker.rate}</div>
-                        <button className="btn-action-outline py-1 px-3"><i className="bi bi-chat-dots-fill me-1"></i>Message</button>
+                        <div className="d-flex gap-2 justify-content-end align-items-center">
+                          <button className="btn-action-outline py-1 px-3" style={{ height: '34px', fontSize: '0.85rem' }}><i className="bi bi-chat-dots-fill me-1"></i>Message</button>
+                          {job.status === 'Hired & In Progress' && (
+                            <button 
+                              className="btn btn-success py-1 px-3 fw-bold rounded-12 shadow-sm d-inline-flex align-items-center justify-content-center"
+                              style={{ height: '34px', fontSize: '0.85rem', background: 'linear-gradient(135deg,#198754,#146c43)', border: 'none' }}
+                              onClick={() => openCompleteModal(job.id)}
+                            >
+                              <i className="bi bi-check-circle-fill me-1"></i>Yes, Work is Done
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -240,6 +286,102 @@ const ClientDashboard = () => {
       currentUserRole="client"
       currentUserAvatar={sessionAvatar}
     />
+
+    {/* ── Rate and Complete Job Modal ── */}
+    {showRatingModal && (
+      <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+        <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-content rounded-24 shadow border-0 overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="modal-header text-white px-4 py-3 border-0" style={{ background: 'linear-gradient(135deg, #198754, #146c43)', borderBottom: 'none' }}>
+              <h5 className="modal-title fw-800" style={{ fontWeight: 800 }}><i className="bi bi-check-circle-fill me-2"></i>Job Completed Done!</h5>
+              <button 
+                type="button" 
+                className="btn-close btn-close-white" 
+                onClick={() => setShowRatingModal(false)}
+                aria-label="Close"
+              ></button>
+            </div>
+            
+            {/* Modal Body */}
+            <form onSubmit={handleCompleteJobSubmit}>
+              <div className="modal-body p-4">
+                <div className="text-center mb-3">
+                  <div className="bg-success bg-opacity-10 text-success p-3 rounded-circle d-inline-flex mb-2" style={{ fontSize: '1.8rem', width: '56px', height: '56px', alignItems: 'center', justifyContent: 'center' }}>
+                    👷‍♂️
+                  </div>
+                  <h6 className="fw-800 text-dark mb-1" style={{ fontWeight: 800 }}>Rate Your Worker</h6>
+                  <p className="text-muted small">Please provide your rating and valuable feedback for the matched worker.</p>
+                </div>
+                
+                {/* Star Rating Select */}
+                <div className="mb-4 text-center">
+                  <label className="small fw-700 text-muted d-block mb-2" style={{ letterSpacing: '0.05rem' }}>SELECT RATING STAR</label>
+                  <div className="d-flex justify-content-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <span 
+                        key={star} 
+                        style={{ cursor: 'pointer', fontSize: '2.5rem', transition: 'all 0.15s', userSelect: 'none' }}
+                        className={star <= ratingValue ? 'text-warning' : 'text-secondary opacity-25'}
+                        onClick={() => setRatingValue(star)}
+                      >
+                        ★
+                      </span>
+                    ))}
+                  </div>
+                  <span className="badge bg-warning bg-opacity-10 text-warning fw-800 mt-2 px-3 py-1 rounded-pill" style={{ fontSize: '0.8rem' }}>
+                    {ratingValue === 5 ? '⭐⭐⭐⭐⭐ Excellent (5/5)' : 
+                     ratingValue === 4 ? '⭐⭐⭐⭐ Very Good (4/5)' : 
+                     ratingValue === 3 ? '⭐⭐⭐ Good (3/5)' : 
+                     ratingValue === 2 ? '⭐⭐ Fair (2/5)' : '⭐ Poor (1/5)'}
+                  </span>
+                </div>
+                
+                {/* Feedback Input */}
+                <div className="mb-3">
+                  <label htmlFor="reviewText" className="form-label small fw-700 text-muted">Feedback / Comments</label>
+                  <textarea 
+                    className="form-control rounded-12 p-3" 
+                    id="reviewText" 
+                    rows="3" 
+                    placeholder="e.g. He completed the job perfectly, was extremely polite, and clean! Highly recommended..."
+                    value={reviewText}
+                    onChange={(e) => setReviewText(e.target.value)}
+                    style={{ resize: 'none', border: '1.5px solid #cbd5e1' }}
+                  ></textarea>
+                </div>
+              </div>
+              
+              {/* Modal Footer */}
+              <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
+                <button 
+                  type="button" 
+                  className="btn btn-outline-secondary flex-fill rounded-12 py-2 fw-bold" 
+                  onClick={() => setShowRatingModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-success flex-fill rounded-12 py-2 fw-bold"
+                  style={{ background: 'linear-gradient(135deg, #198754, #146c43)', border: 'none' }}
+                  disabled={submittingRating}
+                >
+                  {submittingRating ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Saving...
+                    </>
+                  ) : 'Submit Feedback & Complete'}
+                </button>
+              </div>
+            </form>
+            
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 };

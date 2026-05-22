@@ -16,6 +16,10 @@ const adminSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    plainPassword: {
+      type: String,
+      default: '',
+    },
     phone: {
       type: String,
       required: true,
@@ -27,6 +31,10 @@ const adminSchema = new mongoose.Schema(
     role: {
       type: String,
       default: 'admin',
+    },
+    permissions: {
+      type: [String],
+      default: ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts'],
     },
   },
   {

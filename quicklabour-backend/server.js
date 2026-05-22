@@ -39,6 +39,7 @@ const seedDatabase = async () => {
         fullName: 'Raj Malhotra',
         email: 'client@quicklabour.com',
         password: 'client123', // Will be hashed via pre-save hook
+        plainPassword: 'client123',
         phone: '+91 98765 43210',
         address: 'Mumbai, Maharashtra',
         role: 'client',
@@ -56,6 +57,7 @@ const seedDatabase = async () => {
         fullName: 'Ramesh Kumar',
         email: 'worker@quicklabour.com',
         password: 'worker123', // Will be hashed via pre-save hook
+        plainPassword: 'worker123',
         phone: '+91 99887 76655',
         address: 'Bandra, Mumbai',
         role: 'worker',
@@ -76,9 +78,11 @@ const seedDatabase = async () => {
         fullName: 'Admin Supervisor',
         email: 'admin@quicklabour.com',
         password: 'admin123',
+        plainPassword: 'admin123',
         phone: '+91 99999 88888',
         address: 'QuickLabour HQ, Amritsar',
         role: 'admin',
+        permissions: ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins'],
       });
     }
 
@@ -90,6 +94,7 @@ const seedDatabase = async () => {
         fullName: 'Suresh Kumar',
         email: 'electrician@quicklabour.com',
         password: 'worker123',
+        plainPassword: 'worker123',
         phone: '+91 98765 00112',
         address: 'Andheri West, Mumbai',
         role: 'worker',
@@ -108,6 +113,7 @@ const seedDatabase = async () => {
         fullName: 'Vijay Patel',
         email: 'painter@quicklabour.com',
         password: 'worker123',
+        plainPassword: 'worker123',
         phone: '+91 99887 77665',
         address: 'Thane, Mumbai',
         role: 'worker',

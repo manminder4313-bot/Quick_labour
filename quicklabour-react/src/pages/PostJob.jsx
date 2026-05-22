@@ -1,57 +1,143 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { api } from '../utils/api';
+import { api, LABOUR_INDUSTRIES } from '../utils/api';
 
-// ─────────────────────────────────────────────
-//  PRICING CONFIG — edit rates here anytime
-// ─────────────────────────────────────────────
-const SERVICE_PRICING = {
-  'Electric Work': { visitCharge: 80, baseRate: 800, icon: '⚡', desc: 'Wiring, switches, appliance repairs' },
-  'Plumbing': { visitCharge: 80, baseRate: 700, icon: '🔧', desc: 'Leakages, pipes, taps & faucets' },
-  'Painting': { visitCharge: 80, baseRate: 650, icon: '🎨', desc: 'Wall painting, textures, polishing' },
-  'Carpenter': { visitCharge: 80, baseRate: 750, icon: '🪚', desc: 'Furniture, doors, wood fittings' },
-  'Welder': { visitCharge: 80, baseRate: 900, icon: '🔥', desc: 'Metal work, grills, fabrication' },
-  'Driver': { visitCharge: 80, baseRate: 500, icon: '🚗', desc: 'Personal/commercial driving service' },
-  'Cleaning': { visitCharge: 50, baseRate: 450, icon: '🧹', desc: 'Deep cleaning, housekeeping' },
-  'Mason': { visitCharge: 80, baseRate: 850, icon: '🧱', desc: 'Brick laying, plastering, flooring' },
+// Helper to get pricing, icon and description for any specialty dynamically
+const getServicePricing = (specialtyName) => {
+  for (const [industryName, info] of Object.entries(LABOUR_INDUSTRIES)) {
+    const spec = info.specialties.find(s => s.name === specialtyName);
+    if (spec) {
+      return {
+        visitCharge: spec.visitCharge,
+        baseRate: spec.baseRate,
+        icon: info.icon,
+        desc: spec.desc
+      };
+    }
+  }
+  // Fallback default pricing
+  return { visitCharge: 80, baseRate: 600, icon: '🛠️', desc: 'General professional support services' };
 };
 
+// Itemized list of works with rates for each main occupation type
+const SPECIALTY_SUB_SERVICES = {
+  "Electrician": [
+    { id: "elec_switch", name: "Switchboard Installation & Repairs", rate: 250 },
+    { id: "elec_fan", name: "Ceiling Fan Repair & Fitting", rate: 350 },
+    { id: "elec_light", name: "LED/Tube Light Mounting & Repairs", rate: 180 },
+    { id: "elec_wiring", name: "Complete Room Re-wiring Service", rate: 600 },
+    { id: "elec_appliance", name: "Home Appliance Circuit Diagnosis", rate: 450 }
+  ],
+  "Plumber": [
+    { id: "plumb_tap", name: "Tap/Faucet Leak Repair & Fitting", rate: 150 },
+    { id: "plumb_clog", name: "Kitchen Sink/Drain Blockage Clearing", rate: 300 },
+    { id: "plumb_pipe", name: "PVC/GI Pipeline Leak Patching", rate: 400 },
+    { id: "plumb_toilet", name: "Toilet Flush Tank Component Overhaul", rate: 380 },
+    { id: "plumb_geyser", name: "Water Geyser Pipeline Fixing", rate: 500 }
+  ],
+  "Carpenter": [
+    { id: "carp_handle", name: "Door Handle & Lock Installation", rate: 280 },
+    { id: "carp_hinge", name: "Cabinet Hinges Alignment & Repair", rate: 180 },
+    { id: "carp_furniture", name: "Wooden Chairs & Sofa Frame Polish/Fix", rate: 450 },
+    { id: "carp_door", name: "Wooden Door Frame Repair & Trimming", rate: 500 },
+    { id: "carp_drawer", name: "Kitchen Drawer Runner Replacement", rate: 350 }
+  ],
+  "Painter": [
+    { id: "paint_touchup", name: "Minor Wall Stains Patch Painting", rate: 300 },
+    { id: "paint_room", name: "Single Bedroom Complete Coat Painting", rate: 1200 },
+    { id: "paint_stencil", name: "Designer Accent Wall Painting", rate: 850 },
+    { id: "paint_polish", name: "Teak Wood Door Varnish/Polishing", rate: 550 },
+    { id: "paint_putty", name: "Wall Cracks Putty Application & Sanding", rate: 400 }
+  ],
+  "Mason": [
+    { id: "mason_plaster", name: "Wall Plastering Crack Remediation", rate: 450 },
+    { id: "mason_tile", name: "Broken Tile/Marble Replacement", rate: 380 },
+    { id: "mason_brick", name: "Cement Brick Boundary Construction (per sqft)", rate: 750 },
+    { id: "mason_flooring", name: "Bathroom Concrete Slope Correction", rate: 600 }
+  ],
+  "Construction Labour": [
+    { id: "const_load", name: "Heavy Sand/Cement Bag Manual Loading", rate: 350 },
+    { id: "const_debris", name: "Post-Renovation Debris Cleaning & Disposal", rate: 300 },
+    { id: "const_digging", name: "Ground Excavation & Trench Digging", rate: 400 }
+  ]
+};
+
+// Fallback dynamic sub-services mapping for other occupations
+const getSubServices = (specialty) => {
+  return SPECIALTY_SUB_SERVICES[specialty] || [
+    { id: "gen_inspect", name: `General ${specialty} Inspection & Diagnosis`, rate: 200 },
+    { id: "gen_standard", name: `Standard ${specialty} Repair Job`, rate: 450 },
+    { id: "gen_install", name: `Standard ${specialty} Mounting / Fitting`, rate: 550 }
+  ];
+};
 
 const PostJob = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryParams = new URLSearchParams(location.search);
-  const initialCategory = queryParams.get('category') || 'Electric Work';
+  const initialCategory = queryParams.get('category') || 'Construction Labour';
+
+  // Direct booking parameters from Worker Card click
+  const [directWorker] = useState(() => {
+    const workerId = queryParams.get('workerId');
+    const workerName = queryParams.get('workerName');
+    const workerAvatar = queryParams.get('workerAvatar');
+    return workerId ? { id: workerId, name: workerName, avatar: workerAvatar } : null;
+  });
 
   // ── Form State ────────────────────────────── 
   const [formData, setFormData] = useState({
     name: sessionStorage.getItem('userName') || '',
+    phone: sessionStorage.getItem('userPhone') || '',
     location: sessionStorage.getItem('userAddress') || '',
     fullAddress: '',
     latitude: null,
     longitude: null,
     repair: initialCategory,
     days: 1,
-    money: '',        // auto-calculated but editable
+    money: '',
   });
 
+  const [selectedWorks, setSelectedWorks] = useState([]);
   const [locStatus, setLocStatus] = useState('idle');
   const [locError, setLocError] = useState('');
   const [section, setSection] = useState('form');     // form | confirm | submitted
   const [dbJob, setDbJob] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Pricing Calculations ─────────────────────
-  const pricing = SERVICE_PRICING[formData.repair] || SERVICE_PRICING['Electric Work'];
-  const days = Math.max(1, Number(formData.days) || 1);
+  // Derive initial industry from initialCategory
+  const getInitialIndustry = () => {
+    for (const [ind, info] of Object.entries(LABOUR_INDUSTRIES)) {
+      if (info.specialties.some(s => s.name === initialCategory)) return ind;
+    }
+    return Object.keys(LABOUR_INDUSTRIES)[0];
+  };
+  const [selectedIndustry, setSelectedIndustry] = useState(getInitialIndustry);
+
+  // Reset and auto-select first sub-service when repair specialty changes
+  useEffect(() => {
+    const defaultServices = getSubServices(formData.repair);
+    if (defaultServices.length > 0) {
+      setSelectedWorks([defaultServices[0].id]);
+    } else {
+      setSelectedWorks([]);
+    }
+  }, [formData.repair]);
+
+  // Pricing calculations
+  const pricing = getServicePricing(formData.repair);
   const visitCharge = pricing.visitCharge;
-  const laborCost = pricing.baseRate * days;
+  const currentSubServices = getSubServices(formData.repair);
+  
+  // Calculate selected sub-services cost
+  const selectedSubServicesData = currentSubServices.filter(s => selectedWorks.includes(s.id));
+  const laborCost = selectedSubServicesData.reduce((sum, item) => sum + item.rate, 0);
   const totalCost = visitCharge + laborCost;
 
   // Sync money field with auto-calculation
   useEffect(() => {
     setFormData(prev => ({ ...prev, money: totalCost }));
-  }, [formData.repair, formData.days, totalCost]);
+  }, [totalCost]);
 
   useEffect(() => {
     if (!sessionStorage.getItem('userRole')) navigate('/login');
@@ -59,7 +145,7 @@ const PostJob = () => {
 
   useEffect(() => {
     const cat = queryParams.get('category');
-    if (cat && SERVICE_PRICING[cat]) {
+    if (cat && getServicePricing(cat).desc !== 'General professional support services') {
       setFormData(prev => ({ ...prev, repair: cat }));
     }
   }, [location.search]);
@@ -100,13 +186,33 @@ const PostJob = () => {
   const handleConfirmSubmit = async () => {
     setSubmitting(true);
     try {
-      const created = await api.createJob({ ...formData, money: totalCost });
+      const selectedTaskNames = selectedSubServicesData.map(s => s.name).join(', ');
+      const payload = {
+        ...formData,
+        repair: selectedTaskNames ? `${formData.repair} (${selectedTaskNames})` : formData.repair,
+        money: totalCost
+      };
+      if (directWorker) {
+        payload.workerId = directWorker.id;
+      }
+      const created = await api.createJob(payload);
       setDbJob(created);
       setSection('submitted');
     } catch (err) {
       alert('❌ Error: ' + err.message);
     }
     setSubmitting(false);
+  };
+
+  const handleToggleWork = (workId) => {
+    setSelectedWorks(prev => {
+      if (prev.includes(workId)) {
+        // Keep at least one selected so the bill isn't completely empty
+        if (prev.length === 1) return prev;
+        return prev.filter(id => id !== workId);
+      }
+      return [...prev, workId];
+    });
   };
 
   // ── Reusable price row ────────────────────────
@@ -118,120 +224,226 @@ const PostJob = () => {
   );
 
   return (
-    <div className="container py-5 mt-4" style={{ maxWidth: '700px' }}>
+    <div className="container py-5 mt-4" style={{ maxWidth: '850px' }}>
 
       {/* ═══════════════ FORM SECTION ═══════════════ */}
       {section === 'form' && (
         <>
           {/* Header */}
           <div className="text-center mb-4">
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg,#0d6efd,#6610f2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.8rem', margin: '0 auto 12px', boxShadow: '0 8px 24px rgba(13,110,253,.3)' }}>
-              🛠️
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: directWorker ? 'linear-gradient(135deg,#198754,#0f5132)' : 'linear-gradient(135deg,#0d6efd,#6610f2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.8rem', margin: '0 auto 12px', boxShadow: directWorker ? '0 8px 24px rgba(25,135,84,.3)' : '0 8px 24px rgba(13,110,253,.3)' }}>
+              {directWorker ? '⚡' : '🛠️'}
             </div>
-            <h2 style={{ fontWeight: 800, color: '#1a1a2e' }}>Book a Service</h2>
-            <p className="text-muted small">Select your service, see the exact cost, then confirm your booking.</p>
+            <h2 style={{ fontWeight: 800, color: '#1a1a2e' }}>
+              {directWorker ? `Hire ${directWorker.name}` : 'Book a Service'}
+            </h2>
+            <p className="text-muted small">
+              {directWorker ? `Fill in your task details below to hire ${directWorker.name} directly.` : 'Fill in your details, select your industry, choose occupation, and pick your tasks.'}
+            </p>
           </div>
 
-          <div className="row g-4">
-            {/* ── LEFT: Form fields ── */}
-            <div className="col-lg-7">
-              <div className="p-4 rounded-4 shadow-sm" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
+          {/* Direct Worker Alert Card */}
+          {directWorker && (
+            <div className="mb-4 p-3 rounded-4 border d-flex align-items-center gap-3 animate-fade-in" style={{ background: 'linear-gradient(135deg, rgba(25,135,84,0.06), rgba(15,81,50,0.06))', borderColor: '#19875440' }}>
+              <img src={directWorker.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&q=80'} alt={directWorker.name} style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '3px solid #198754' }} />
+              <div>
+                <span className="badge bg-success rounded-pill fw-bold small mb-1" style={{ fontSize: '0.68rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>⚡ DIRECT HIRE REQUEST</span>
+                <h5 className="mb-0 fw-800 text-dark" style={{ fontSize: '1rem', fontWeight: 800 }}>{directWorker.name}</h5>
+                <p className="mb-0 text-muted small" style={{ fontSize: '0.8rem' }}>The worker will receive your request immediately. Their default specialty matches your service type.</p>
+              </div>
+            </div>
+          )}
 
-                {/* Name */}
-                <div className="mb-3">
-                  <label className="form-label fw-bold small text-muted">👤 Your Name</label>
-                  <input type="text" className="form-control rounded-3 py-2" id="name" placeholder="Full name" value={formData.name} onChange={handleChange} required />
+          {/* 1. TOP BOX: Client & Location Details */}
+          <div className="p-4 rounded-4 shadow-sm mb-4" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
+            <h5 className="fw-800 mb-3" style={{ color: '#0a2540', fontSize: '1.05rem' }}>
+              <span className="me-2">👤</span> Client &amp; Location Details
+            </h5>
+            
+            <div className="row g-3">
+              {/* Client Name */}
+              <div className="col-md-6">
+                <label className="form-label fw-bold small text-muted">Client Full Name</label>
+                <input type="text" className="form-control rounded-3 py-2" id="name" placeholder="Full name" value={formData.name} onChange={handleChange} required />
+              </div>
+
+              {/* Contact Number */}
+              <div className="col-md-6">
+                <label className="form-label fw-bold small text-muted">Contact Mobile Number</label>
+                <input type="tel" className="form-control rounded-3 py-2" id="phone" placeholder="e.g. +91 98765 43210" value={formData.phone} onChange={handleChange} required />
+              </div>
+
+              {/* Area / City + Live Location button */}
+              <div className="col-md-6">
+                <label className="form-label fw-bold small text-muted">Area / City Location</label>
+                <div className="input-group">
+                  <input type="text" className="form-control rounded-start-3 py-2" id="location" placeholder="e.g. Amritsar" value={formData.location} onChange={handleChange} required />
+                  <button type="button"
+                    className="btn px-2 fw-bold"
+                    style={{ background: locStatus === 'success' ? 'linear-gradient(135deg,#198754,#0f5132)' : 'linear-gradient(135deg,#0d6efd,#6610f2)', color: '#fff', borderRadius: '0 12px 12px 0', fontSize: '0.75rem', minWidth: 120, whiteSpace: 'nowrap' }}
+                    onClick={handleGetLiveLocation}
+                    disabled={locStatus === 'fetching'}
+                  >
+                    {locStatus === 'fetching' && <span className="spinner-border spinner-border-sm me-1" />}
+                    {locStatus === 'success' ? '✅ Set GPS' : '📡 Live Location'}
+                  </button>
                 </div>
+                {locError && <div className="text-danger small mt-1">⚠️ {locError}</div>}
+              </div>
 
-                {/* Service Type */}
-                <div className="mb-3">
-                  <label className="form-label fw-bold small text-muted">🔧 Service Required</label>
-                  <div className="row g-2">
-                    {Object.entries(SERVICE_PRICING).map(([svc, info]) => (
-                      <div className="col-6" key={svc}>
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, repair: svc }))}
-                          className="w-100 rounded-3 border-0 py-2 px-2 text-start"
-                          style={{
-                            background: formData.repair === svc ? 'linear-gradient(135deg,#0d6efd,#6610f2)' : '#f8f9ff',
-                            color: formData.repair === svc ? '#fff' : '#495057',
-                            fontWeight: formData.repair === svc ? 700 : 500,
-                            fontSize: '0.82rem',
-                            transition: 'all 0.2s',
-                            border: formData.repair === svc ? 'none' : '1.5px solid #e0e7ff',
-                          }}
-                        >
-                          <span style={{ fontSize: '1.1rem', marginRight: 6 }}>{info.icon}</span>{svc}
-                        </button>
-                      </div>
+              {/* Full Address */}
+              <div className="col-md-6">
+                <label className="form-label fw-bold small text-muted">Full Address (House, Street, Landmark)</label>
+                <textarea className="form-control rounded-3 py-1" id="fullAddress" rows={2} placeholder="e.g. House No. 12, Ranjit Avenue, Near DAV School, Amritsar" value={formData.fullAddress} onChange={handleChange} style={{ resize: 'none', fontSize: '0.88rem' }} />
+                {mapsLink && (
+                  <a href={mapsLink} target="_blank" rel="noreferrer" className="small fw-bold d-inline-block mt-1 text-decoration-none" style={{ color: directWorker ? '#198754' : '#0d6efd' }}>🗺️ Preview on Maps →</a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. MIDDLE BOXES: Side-by-Side Category and Specialty Selectors */}
+          {!directWorker && (
+            <div className="row g-3 mb-4">
+              {/* Box 1: Select Industry */}
+              <div className="col-md-6">
+                <div className="p-4 rounded-4 shadow-sm h-100" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
+                  <h5 className="fw-800 mb-3" style={{ color: '#0a2540', fontSize: '1.02rem' }}>
+                    <span className="me-2">🏢</span> 1. Select Industry
+                  </h5>
+                  <div className="d-flex flex-column gap-2" style={{ maxHeight: '280px', overflowY: 'auto', paddingRight: '5px' }}>
+                    {Object.entries(LABOUR_INDUSTRIES).map(([industry, info]) => (
+                      <button
+                        key={industry}
+                        type="button"
+                        onClick={() => {
+                          setSelectedIndustry(industry);
+                          setFormData(prev => ({ ...prev, repair: info.specialties[0].name }));
+                        }}
+                        className={`text-start d-flex align-items-center gap-3 px-3 py-2 rounded-3 border-0 transition ${selectedIndustry === industry ? 'text-white' : 'text-dark'}`}
+                        style={{
+                          background: selectedIndustry === industry ? 'linear-gradient(135deg,#0d6efd,#6610f2)' : '#f8f9ff',
+                          fontWeight: selectedIndustry === industry ? 700 : 500,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          boxShadow: selectedIndustry === industry ? '0 4px 12px rgba(13,110,253,.2)' : 'none',
+                          border: selectedIndustry === industry ? 'none' : '1px solid #e0e7ff',
+                          transition: 'all 0.18s'
+                        }}
+                      >
+                        <span style={{ fontSize: '1.2rem' }}>{info.icon}</span>
+                        <span>{industry}</span>
+                      </button>
                     ))}
                   </div>
-                  <div className="mt-2 small text-muted" style={{ fontSize: '0.75rem' }}>
-                    {pricing.icon} <em>{pricing.desc}</em>
-                  </div>
                 </div>
+              </div>
 
-                {/* Days */}
-                <div className="mb-3">
-                  <label className="form-label fw-bold small text-muted">📅 Number of Days Required</label>
-                  <div className="d-flex align-items-center gap-2">
-                    <button type="button" className="btn btn-outline-secondary rounded-3 px-3 fw-bold" style={{ fontSize: '1.2rem' }}
-                      onClick={() => setFormData(prev => ({ ...prev, days: Math.max(1, (Number(prev.days) || 1) - 1) }))}
-                    >−</button>
-                    <input
-                      type="number" id="days" min={1} max={30}
-                      className="form-control rounded-3 text-center fw-bold py-2" style={{ width: 70, fontSize: '1.1rem' }}
-                      value={formData.days}
-                      onChange={e => setFormData(prev => ({ ...prev, days: Math.max(1, Number(e.target.value) || 1) }))}
-                    />
-                    <button type="button" className="btn btn-outline-secondary rounded-3 px-3 fw-bold" style={{ fontSize: '1.2rem' }}
-                      onClick={() => setFormData(prev => ({ ...prev, days: Math.min(30, (Number(prev.days) || 1) + 1) }))}
-                    >+</button>
-                    <span className="text-muted small ms-1">day{days > 1 ? 's' : ''}</span>
-                  </div>
-                </div>
-
-                {/* Location */}
-                <div className="mb-3">
-                  <label className="form-label fw-bold small text-muted">📍 Area / City</label>
-                  <div className="input-group">
-                    <input type="text" className="form-control rounded-start-3 py-2" id="location" placeholder="e.g. Amritsar" value={formData.location} onChange={handleChange} required />
-                    <button type="button"
-                      className="btn px-2 fw-bold"
-                      style={{ background: locStatus === 'success' ? 'linear-gradient(135deg,#198754,#0f5132)' : 'linear-gradient(135deg,#0d6efd,#6610f2)', color: '#fff', borderRadius: '0 12px 12px 0', fontSize: '0.75rem', minWidth: 120, whiteSpace: 'nowrap' }}
-                      onClick={handleGetLiveLocation}
-                      disabled={locStatus === 'fetching'}
-                    >
-                      {locStatus === 'fetching' && <span className="spinner-border spinner-border-sm me-1" />}
-                      {locStatus === 'success' ? '✅ Set' : '📡 Live Location'}
-                    </button>
-                  </div>
-                  {locError && <div className="text-danger small mt-1">⚠️ {locError}</div>}
-                </div>
-
-                {/* Full Address */}
-                <div className="mb-3">
-                  <label className="form-label fw-bold small text-muted">🏠 Full Address <span className="fw-normal text-muted">(House, Street, Landmark)</span></label>
-                  <textarea className="form-control rounded-3 py-2" id="fullAddress" rows={2} placeholder="e.g. House No. 12, Ranjit Avenue, Near DAV School, Amritsar" value={formData.fullAddress} onChange={handleChange} style={{ resize: 'none', fontSize: '0.88rem' }} />
-                  {mapsLink && (
-                    <a href={mapsLink} target="_blank" rel="noreferrer" className="small fw-bold d-inline-block mt-1 text-decoration-none" style={{ color: '#0d6efd' }}>🗺️ Preview on Maps →</a>
+              {/* Box 2: Type of Occupation */}
+              <div className="col-md-6">
+                <div className="p-4 rounded-4 shadow-sm h-100" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
+                  <h5 className="fw-800 mb-3" style={{ color: '#0a2540', fontSize: '1.02rem' }}>
+                    <span className="me-2">👷</span> 2. Type of Occupation
+                  </h5>
+                  {selectedIndustry ? (
+                    <div className="d-flex flex-wrap gap-2" style={{ maxHeight: '280px', overflowY: 'auto', contentVisibility: 'auto' }}>
+                      {LABOUR_INDUSTRIES[selectedIndustry].specialties.map((spec) => (
+                        <button
+                          key={spec.name}
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, repair: spec.name }))}
+                          className="d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-start"
+                          style={{
+                            border: formData.repair === spec.name ? 'none' : '1px solid #e0e7ff',
+                            background: formData.repair === spec.name ? 'linear-gradient(135deg,#0d6efd,#6610f2)' : '#f8f9ff',
+                            color: formData.repair === spec.name ? '#fff' : '#495057',
+                            fontWeight: formData.repair === spec.name ? 700 : 500,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            flex: '1 1 45%',
+                            transition: 'all 0.18s',
+                          }}
+                        >
+                          {formData.repair === spec.name ? '✓ ' : '🔧 '} {spec.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-5 text-muted small">Please select an industry first.</div>
                   )}
                 </div>
               </div>
             </div>
+          )}
 
-            {/* ── RIGHT: Price Calculator ── */}
-            <div className="col-lg-5">
-              <div className="rounded-4 shadow-sm overflow-hidden" style={{ border: '1.5px solid #e8ecf8', position: 'sticky', top: '90px' }}>
-                {/* Header */}
-                <div style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', padding: '16px 20px', color: '#fff' }}>
-                  <div style={{ fontWeight: 800, fontSize: '1rem' }}>💰 Price Estimate</div>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Auto-calculated based on your selection</div>
+          {/* 3. BOTTOM SECTION: Tasks Required and Hired Bill Breakdown */}
+          <div className="row g-4">
+            
+            {/* LEFT: Specific Tasks Required */}
+            <div className="col-md-7">
+              <div className="p-4 rounded-4 shadow-sm h-100" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h5 className="fw-800 mb-0" style={{ color: '#0a2540', fontSize: '1.05rem' }}>
+                    <span className="me-2">🛠️</span> Select Tasks Needed
+                  </h5>
+                  <span className="badge bg-secondary rounded-pill small" style={{ fontSize: '0.72rem' }}>
+                    {currentSubServices.length} options
+                  </span>
                 </div>
 
-                {/* Breakdown */}
+                <p className="text-muted small mb-3">Choose the specific type of works you need. Check or uncheck tasks below:</p>
+
+                <div className="d-flex flex-column gap-2">
+                  {currentSubServices.map((task) => {
+                    const isChecked = selectedWorks.includes(task.id);
+                    return (
+                      <div
+                        key={task.id}
+                        onClick={() => handleToggleWork(task.id)}
+                        className="p-3 rounded-3 border d-flex align-items-center justify-content-between transition"
+                        style={{
+                          cursor: 'pointer',
+                          background: isChecked ? 'rgba(13,110,253,0.03)' : '#fcfcff',
+                          borderColor: isChecked ? '#0d6efd' : '#dee2e6',
+                          borderWidth: isChecked ? '1.8px' : '1px',
+                          boxShadow: isChecked ? '0 4px 10px rgba(13,110,253,0.04)' : 'none'
+                        }}
+                      >
+                        <div className="d-flex align-items-center gap-3">
+                          <input
+                            type="checkbox"
+                            className="form-check-input mb-0"
+                            checked={isChecked}
+                            onChange={() => {}} // handled by parent div click
+                            style={{ width: '17px', height: '17px', cursor: 'pointer' }}
+                          />
+                          <div>
+                            <span className="fw-bold d-block text-dark" style={{ fontSize: '0.85rem' }}>{task.name}</span>
+                            <span className="text-muted small" style={{ fontSize: '0.72rem' }}>Standard service call item</span>
+                          </div>
+                        </div>
+                        <div className="text-end">
+                          <span className="badge rounded-pill px-3 py-2 fw-800" style={{ background: isChecked ? 'linear-gradient(135deg,#0d6efd,#6610f2)' : '#e9ecef', color: isChecked ? '#fff' : '#495057', fontSize: '0.78rem' }}>
+                            ₹{task.rate}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: Live Bill & Breakdown */}
+            <div className="col-md-5">
+              <div className="rounded-4 shadow-sm overflow-hidden sticky-top" style={{ border: '1.5px solid #e8ecf8', top: '90px', zIndex: 90 }}>
+                <div style={{ background: directWorker ? 'linear-gradient(135deg,#198754,#0f5132)' : 'linear-gradient(135deg,#0d6efd,#6610f2)', padding: '16px 20px', color: '#fff' }}>
+                  <div style={{ fontWeight: 800, fontSize: '1rem' }}>📋 Live Service Bill</div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Itemized pricing estimate</div>
+                </div>
+
                 <div className="p-3 bg-white">
+                  {/* Selected Trade Label */}
                   <div className="d-flex align-items-center gap-2 mb-3 p-2 rounded-3" style={{ background: '#f0f4ff' }}>
                     <span style={{ fontSize: '1.5rem' }}>{pricing.icon}</span>
                     <div>
@@ -240,62 +452,81 @@ const PostJob = () => {
                     </div>
                   </div>
 
-                  <PriceRow label={`🚗 Visiting / Inspection Charge`} amount={visitCharge} />
-                  <PriceRow label={`👷 Labour: ₹${pricing.baseRate.toLocaleString('en-IN')} × ${days} day${days > 1 ? 's' : ''}`} amount={laborCost} />
+                  {/* Pricing Breakdown items */}
+                  <PriceRow label="🚗 Visiting / Inspection Fee" amount={visitCharge} />
 
-                  <div className="rounded-3 p-3 mt-2 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg,#0d6efd15,#6610f215)', border: '1.5px solid #c7d7ff' }}>
-                    <span className="fw-bold" style={{ color: '#1a1a2e' }}>💳 Total Payable</span>
-                    <span style={{ fontWeight: 900, fontSize: '1.3rem', color: '#0d6efd' }}>₹{totalCost.toLocaleString('en-IN')}</span>
+                  <div className="my-2 border-top border-bottom py-2">
+                    <span className="fw-bold small text-muted d-block mb-1">Hired Tasks ({selectedSubServicesData.length}):</span>
+                    {selectedSubServicesData.map(s => (
+                      <div key={s.id} className="d-flex justify-content-between text-muted small py-1" style={{ fontSize: '0.78rem' }}>
+                        <span>• {s.name}</span>
+                        <span className="fw-bold">₹{s.rate}</span>
+                      </div>
+                    ))}
                   </div>
 
-                  <div className="text-muted mt-2" style={{ fontSize: '0.68rem', lineHeight: 1.5 }}>
-                    * Visiting charge is one-time. Final labour cost may vary based on work scope.
+                  {/* Grand Total */}
+                  <div className="rounded-3 p-3 mt-3 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg,#19875410,#0f513210)', border: '1.5px solid #a3cfbb' }}>
+                    <span className="fw-bold text-dark" style={{ fontSize: '0.85rem' }}>💳 Grand Total</span>
+                    <span style={{ fontWeight: 900, fontSize: '1.35rem', color: '#198754' }}>₹{totalCost.toLocaleString('en-IN')}</span>
+                  </div>
+
+                  <div className="text-muted mt-2" style={{ fontSize: '0.68rem', lineHeight: 1.4 }}>
+                    * Visiting fee is fixed. Task rates are standard for standard repair size.
                   </div>
                 </div>
 
                 {/* Confirm Button */}
                 <div className="p-3 border-top bg-white">
                   <button
-                    className="btn w-100 py-3 fw-bold rounded-3"
-                    style={{ background: !formData.name || !formData.location ? '#dee2e6' : 'linear-gradient(135deg,#0d6efd,#6610f2)', color: !formData.name || !formData.location ? '#6c757d' : '#fff', border: 'none', fontSize: '1rem', transition: 'all .2s' }}
-                    disabled={!formData.name || !formData.location}
+                    className="btn w-100 py-3 fw-bold rounded-3 transition"
+                    style={{
+                      background: !formData.name || !formData.phone || !formData.location || selectedWorks.length === 0 ? '#dee2e6' : (directWorker ? 'linear-gradient(135deg,#198754,#0f5132)' : 'linear-gradient(135deg,#0d6efd,#6610f2)'),
+                      color: !formData.name || !formData.phone || !formData.location || selectedWorks.length === 0 ? '#6c757d' : '#fff',
+                      border: 'none',
+                      fontSize: '1rem'
+                    }}
+                    disabled={!formData.name || !formData.phone || !formData.location || selectedWorks.length === 0}
                     onClick={() => setSection('confirm')}
                   >
-                    Review &amp; Confirm →
+                    Confirm Booking Details →
                   </button>
-                  {(!formData.name || !formData.location) && (
-                    <div className="text-center text-danger small mt-1" style={{ fontSize: '0.75rem' }}>Please fill Name and Location first.</div>
+                  {(!formData.name || !formData.phone || !formData.location || selectedWorks.length === 0) && (
+                    <div className="text-center text-danger small mt-2" style={{ fontSize: '0.72rem' }}>
+                      Please fill Name, Contact, Area & select at least 1 task.
+                    </div>
                   )}
                 </div>
               </div>
             </div>
+
           </div>
         </>
       )}
 
       {/* ═══════════════ CONFIRM SECTION ═══════════════ */}
       {section === 'confirm' && (
-        <div className="mx-auto" style={{ maxWidth: '520px' }}>
+        <div className="mx-auto" style={{ maxWidth: '560px' }}>
           <div className="text-center mb-4">
             <div style={{ fontSize: '2.5rem' }}>📋</div>
-            <h3 style={{ fontWeight: 800, color: '#1a1a2e' }}>Confirm Your Booking</h3>
-            <p className="text-muted small">Review all details before sending your request to our workers.</p>
+            <h3 style={{ fontWeight: 800, color: '#1a1a2e' }}>Confirm Your Service Booking</h3>
+            <p className="text-muted small">Please review the itemized task checklist and contact details below.</p>
           </div>
 
           <div className="rounded-4 shadow-sm overflow-hidden" style={{ border: '1.5px solid #e8ecf8' }}>
-            {/* Service summary block */}
-            <div style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', padding: '20px 24px', color: '#fff' }}>
+            {/* Summary Header */}
+            <div style={{ background: directWorker ? 'linear-gradient(135deg,#198754,#0f5132)' : 'linear-gradient(135deg,#0d6efd,#6610f2)', padding: '20px 24px', color: '#fff' }}>
               <div style={{ fontSize: '1.8rem', marginBottom: 6 }}>{pricing.icon}</div>
-              <div style={{ fontWeight: 800, fontSize: '1.2rem' }}>{formData.repair}</div>
+              <div style={{ fontWeight: 800, fontSize: '1.25rem' }}>{formData.repair}</div>
               <div style={{ opacity: 0.85, fontSize: '0.82rem' }}>{pricing.desc}</div>
             </div>
 
             <div className="p-4 bg-white">
-              {/* Detail rows */}
+              {/* Detailed Summary Row */}
               {[
                 ['👤 Client Name', formData.name],
-                ['📍 Area', formData.location],
-                ['📅 Duration', `${days} day${days > 1 ? 's' : ''}`],
+                ['📞 Contact Phone', formData.phone],
+                ['📍 Location Area', formData.location],
               ].map(([label, val]) => (
                 <div key={label} className="d-flex justify-content-between py-2 border-bottom small">
                   <span className="text-muted fw-bold">{label}</span>
@@ -305,30 +536,42 @@ const PostJob = () => {
 
               {formData.fullAddress && (
                 <div className="py-2 border-bottom">
-                  <div className="text-muted fw-bold small mb-1">🏠 Full Address</div>
-                  <div className="small fw-bold" style={{ lineHeight: 1.6 }}>{formData.fullAddress}</div>
+                  <div className="text-muted fw-bold small mb-1">🏠 Full Work Address</div>
+                  <div className="small fw-bold text-dark" style={{ lineHeight: 1.6 }}>{formData.fullAddress}</div>
                   {mapsLink && (
-                    <a href={mapsLink} target="_blank" rel="noreferrer" className="d-inline-flex align-items-center gap-1 mt-2 fw-bold" style={{ background: '#0d6efd', color: '#fff', borderRadius: 8, padding: '4px 12px', fontSize: '0.75rem', textDecoration: 'none' }}>
+                    <a href={mapsLink} target="_blank" rel="noreferrer" className="d-inline-flex align-items-center gap-1 mt-2 fw-bold" style={{ background: directWorker ? '#198754' : '#0d6efd', color: '#fff', borderRadius: 8, padding: '4px 12px', fontSize: '0.75rem', textDecoration: 'none' }}>
                       🗺️ Open in Maps
                     </a>
                   )}
                 </div>
               )}
 
-              {/* Price breakdown in confirm */}
+              {/* Service list checklist */}
               <div className="mt-3 p-3 rounded-3" style={{ background: '#f8f9ff', border: '1px solid #e0e7ff' }}>
-                <div className="fw-bold small mb-2 text-muted">💰 Cost Breakdown</div>
-                <PriceRow label="🚗 Visiting Charge" amount={visitCharge} />
-                <PriceRow label={`👷 Labour (${days}d × ₹${pricing.baseRate.toLocaleString('en-IN')})`} amount={laborCost} />
+                <div className="fw-bold small mb-2 text-primary">📋 Task Checklist:</div>
+                {selectedSubServicesData.map(s => (
+                  <div key={s.id} className="d-flex justify-content-between text-dark py-1 border-bottom border-light" style={{ fontSize: '0.8rem' }}>
+                    <span className="fw-600">✓ {s.name}</span>
+                    <span className="fw-bold text-muted">₹{s.rate}</span>
+                  </div>
+                ))}
+
+                <PriceRow label="Inspection / Visiting Price" amount={visitCharge} />
                 <div className="d-flex justify-content-between align-items-center mt-2 pt-2" style={{ borderTop: '2px solid #c7d7ff' }}>
-                  <span className="fw-bold" style={{ color: '#1a1a2e' }}>💳 Total Payable</span>
-                  <span style={{ fontWeight: 900, fontSize: '1.4rem', color: '#0d6efd' }}>₹{totalCost.toLocaleString('en-IN')}</span>
+                  <span className="fw-bold" style={{ color: '#1a1a2e' }}>💳 Total Amount</span>
+                  <span style={{ fontWeight: 950, fontSize: '1.45rem', color: '#198754' }}>₹{totalCost.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
+              {directWorker && (
+                <div className="mt-3 p-3 rounded-3 text-success small fw-600 border" style={{ background: 'rgba(25,135,84,0.06)', borderColor: '#a3cfbb', lineHeight: '1.5' }}>
+                  ⚡ <strong>Note:</strong> Direct booking request. {directWorker.name} will be assigned immediately and details exchanged in your chat widget.
+                </div>
+              )}
+
               <div className="d-flex gap-2 mt-4">
                 <button className="btn btn-outline-secondary flex-fill py-2 rounded-3 fw-bold" onClick={() => setSection('form')}>
-                  ← Edit Details
+                  ← Edit Form
                 </button>
                 <button
                   className="btn flex-fill py-2 rounded-3 fw-bold"
@@ -336,7 +579,7 @@ const PostJob = () => {
                   onClick={handleConfirmSubmit}
                   disabled={submitting}
                 >
-                  {submitting ? <><span className="spinner-border spinner-border-sm me-2" />Sending...</> : '✅ Confirm & Send Request'}
+                  {submitting ? <><span className="spinner-border spinner-border-sm me-2" />Posting...</> : (directWorker ? '⚡ Confirm & Direct Hire' : '✅ Confirm & Book Request')}
                 </button>
               </div>
             </div>
@@ -348,21 +591,27 @@ const PostJob = () => {
       {section === 'submitted' && (
         <div className="mx-auto text-center" style={{ maxWidth: '480px' }}>
           <div className="rounded-4 shadow-sm p-5 bg-white" style={{ border: '1.5px solid #e8ecf8' }}>
-            <div style={{ fontSize: '3.5rem', marginBottom: 12 }}>🎉</div>
-            <h3 style={{ fontWeight: 800, color: '#1a1a2e' }}>Request Sent!</h3>
-            <p className="text-muted small mb-4">Your {formData.repair} request has been broadcast to nearby verified workers. You'll be notified once a worker accepts.</p>
+            <div style={{ fontSize: '3.5rem', marginBottom: 12 }}>{directWorker ? '⚡' : '🎉'}</div>
+            <h3 style={{ fontWeight: 800, color: '#1a1a2e' }}>
+              {directWorker ? 'Worker Hired!' : 'Request Sent!'}
+            </h3>
+            <p className="text-muted small mb-4">
+              {directWorker 
+                ? `Congratulations! Your direct hire request has been accepted. ${directWorker.name} has been assigned to your service call. A contact detail exchange has been sent to your inbox.`
+                : `Your ${formData.repair} request has been broadcast to nearby verified workers. You'll be notified once a worker accepts.`}
+            </p>
 
             {/* Summary chip */}
-            <div className="d-inline-flex align-items-center gap-2 px-4 py-2 rounded-pill mb-4" style={{ background: 'linear-gradient(135deg,#0d6efd15,#6610f215)', border: '1.5px solid #c7d7ff' }}>
+            <div className="d-inline-flex align-items-center gap-2 px-4 py-2 rounded-pill mb-4" style={{ background: directWorker ? 'linear-gradient(135deg,rgba(25,135,84,0.08),rgba(15,81,50,0.08))' : 'linear-gradient(135deg,#0d6efd15,#6610f215)', border: directWorker ? '1.5px solid #a3cfbb' : '1.5px solid #c7d7ff' }}>
               <span style={{ fontSize: '1.2rem' }}>{pricing.icon}</span>
-              <span className="fw-bold" style={{ color: '#0d6efd' }}>{formData.repair}</span>
+              <span className="fw-bold" style={{ color: directWorker ? '#198754' : '#0d6efd' }}>{formData.repair}</span>
               <span className="text-muted">•</span>
-              <span style={{ fontWeight: 900, color: '#0d6efd' }}>₹{totalCost.toLocaleString('en-IN')}</span>
+              <span style={{ fontWeight: 900, color: directWorker ? '#198754' : '#0d6efd' }}>₹{totalCost.toLocaleString('en-IN')}</span>
             </div>
 
             {mapsLink && (
               <div className="mb-3">
-                <a href={mapsLink} target="_blank" rel="noreferrer" className="btn fw-bold" style={{ background: 'linear-gradient(135deg,#198754,#0f5132)', color: '#fff', borderRadius: 10, textDecoration: 'none', padding: '10px 24px' }}>
+                <a href={mapsLink} target="_blank" rel="noreferrer" className="btn fw-bold text-white" style={{ background: 'linear-gradient(135deg,#198754,#0f5132)', borderRadius: 10, textDecoration: 'none', padding: '10px 24px' }}>
                   🗺️ View Your Location on Maps
                 </a>
               </div>
@@ -372,7 +621,7 @@ const PostJob = () => {
               <button className="btn btn-outline-secondary rounded-3 px-4 fw-bold" onClick={() => { setSection('form'); setDbJob(null); }}>
                 📋 New Request
               </button>
-              <button className="btn rounded-3 px-4 fw-bold" style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', color: '#fff', border: 'none' }} onClick={() => navigate('/client-dashboard')}>
+              <button className="btn rounded-3 px-4 fw-bold text-white" style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }} onClick={() => navigate('/client-dashboard')}>
                 🏠 Go to Dashboard
               </button>
             </div>

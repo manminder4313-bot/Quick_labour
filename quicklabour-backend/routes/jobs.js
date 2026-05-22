@@ -3,17 +3,34 @@ import Job from '../models/Job.js';
 import User from '../models/User.js';
 import { protect } from '../middleware/authMiddleware.js';
 import Message from '../models/Message.js';
+import Review from '../models/Review.js';
 
 const router = express.Router();
+
+// Helper to calculate distance in km using the Haversine formula
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+  const R = 6371; // Radius of the Earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+};
 
 // @desc    Create a new job request
 // @route   POST /api/jobs
 // @access  Private (Client only)
 router.post('/', protect, async (req, res) => {
-  const { name, location, fullAddress, latitude, longitude, repair, money } = req.body;
+  const { name, location, fullAddress, latitude, longitude, repair, money, workerId } = req.body;
 
   try {
     const title = `${repair} Request at ${location}`;
+    const isDirectHire = !!workerId;
+
     const job = new Job({
       client: req.user._id,
       name: name || req.user.fullName,
@@ -24,31 +41,82 @@ router.post('/', protect, async (req, res) => {
       longitude: longitude || null,
       repair,
       money: Number(money),
-      status: 'Waiting...',
+      status: isDirectHire ? 'Accepted' : 'Waiting...',
+      hiredWorker: isDirectHire ? workerId : null,
     });
 
-    // To make the client dashboard super dynamic, let's look for workers of this specialty
-    // in the database and pre-populate bidders if any exist. If not, we generate dynamic mock ones!
-    const matchingWorkers = await User.find({
-      role: 'worker',
-      occupation: new RegExp(repair.split(' ')[0], 'i'), // match "Plumbing" -> "Plumber"
-    });
-
-    if (matchingWorkers.length > 0) {
-      job.bidders = matchingWorkers.slice(0, 3).map((w) => ({
-        worker: w._id,
-        rate: `₹${Math.round(w.rating * 150)}/day`,
-      }));
+    if (isDirectHire) {
+      job.bidders = [];
+      
+      // Increment hired worker's job count
+      const worker = await User.findById(workerId);
+      if (worker) {
+        worker.jobsCompleted = (worker.jobsCompleted || 0) + 1;
+        await worker.save();
+      }
     } else {
-      // Fallback mock workers from standard profiles
-      const fallbackWorkers = await User.find({ role: 'worker' }).limit(2);
-      job.bidders = fallbackWorkers.map((w, idx) => ({
-        worker: w._id,
-        rate: `₹${(idx + 1) * 350 + 200}/day`,
-      }));
+      // To make the client dashboard super dynamic, let's look for workers of this specialty
+      // in the database and pre-populate bidders if any exist. If not, we generate dynamic mock ones!
+      const matchingWorkers = await User.find({
+        role: 'worker',
+        occupation: new RegExp(repair.split(' ')[0], 'i'), // match "Plumbing" -> "Plumber"
+      });
+
+      if (matchingWorkers.length > 0) {
+        job.bidders = matchingWorkers.slice(0, 3).map((w) => ({
+          worker: w._id,
+          rate: `₹${Math.round(w.rating * 150)}/day`,
+        }));
+      } else {
+        // Fallback mock workers from standard profiles
+        const fallbackWorkers = await User.find({ role: 'worker' }).limit(2);
+        job.bidders = fallbackWorkers.map((w, idx) => ({
+          worker: w._id,
+          rate: `₹${(idx + 1) * 350 + 200}/day`,
+        }));
+      }
     }
 
     const createdJob = await job.save();
+
+    // Auto-generate details exchange chat messages upon accepting a direct hire
+    if (isDirectHire) {
+      try {
+        const clientUser = req.user;
+        const workerUser = await User.findById(workerId);
+
+        if (clientUser && workerUser) {
+          // Worker detail-share message
+          const workerText = `Hello! I have accepted your direct request for "${repair}". Here are my contact details:\n\n👷 Worker Name: ${workerUser.fullName}\n📞 Phone Number: ${workerUser.phone}\n🛠️ Specialty: ${workerUser.occupation || 'Trade Worker'}\n⭐ Rating: ${workerUser.rating || '4.9'} / 5.0\n\nI am on my way to your location!`;
+          
+          await Message.create({
+            senderId: workerUser._id.toString(),
+            senderName: workerUser.fullName,
+            senderRole: 'worker',
+            senderAvatar: workerUser.avatar || '',
+            receiverId: clientUser._id.toString(),
+            receiverName: clientUser.fullName,
+            text: workerText,
+          });
+
+          // Client detail-share message
+          const clientText = `Thank you for accepting my booking! Here are my job details and work address:\n\n🏠 Client Name: ${job.name}\n📞 Contact Number: ${clientUser.phone}\n📍 Area: ${job.location}\n📌 Full Address: ${job.fullAddress || 'Shared location'}\n🗺️ GPS Coordinates: ${job.latitude && job.longitude ? `${job.latitude}, ${job.longitude}` : 'Not shared'}\n💰 Price/Budget: ₹${job.money}\n\nLet's coordinate the visiting time here!`;
+
+          await Message.create({
+            senderId: clientUser._id.toString(),
+            senderName: clientUser.fullName,
+            senderRole: 'client',
+            senderAvatar: clientUser.avatar || '',
+            receiverId: workerUser._id.toString(),
+            receiverName: workerUser.fullName,
+            text: clientText,
+          });
+        }
+      } catch (err) {
+        console.error('Error auto-sending details messages on direct hire:', err);
+      }
+    }
+
     res.status(201).json(createdJob);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -73,7 +141,19 @@ router.get('/', protect, async (req, res) => {
         .populate('client', 'fullName email phone address avatar');
 
       // Second, get "Waiting..." jobs that match their occupation (or all jobs if no specific matches)
-      const keyword = req.user.occupation ? req.user.occupation.split(' ')[0] : '';
+      let keyword = req.user.occupation ? req.user.occupation.split(' ')[0] : '';
+      
+      // Normalize keywords to match job categories (e.g. Electrician -> Electric)
+      if (keyword.toLowerCase().startsWith('elect')) {
+        keyword = 'Electric';
+      } else if (keyword.toLowerCase().startsWith('plumb')) {
+        keyword = 'Plumbing';
+      } else if (keyword.toLowerCase().startsWith('paint')) {
+        keyword = 'Painting';
+      } else if (keyword.toLowerCase().startsWith('clean')) {
+        keyword = 'Cleaning';
+      }
+
       let query = { status: 'Waiting...' };
       
       // Look for jobs matching worker category
@@ -84,9 +164,32 @@ router.get('/', protect, async (req, res) => {
       const availableJobs = await Job.find(query)
         .populate('client', 'fullName email phone address avatar');
 
+      // Map jobs to calculate GPS distance and format readable text
+      const availableJobsWithDistance = availableJobs.map((job, idx) => {
+        let distance = null;
+        let distanceText = '';
+        if (req.user.latitude && req.user.longitude && job.latitude && job.longitude) {
+          distance = getDistance(req.user.latitude, req.user.longitude, job.latitude, job.longitude);
+          distanceText = `${distance.toFixed(1)} km away`;
+        }
+        
+        const jobObj = job.toObject();
+        jobObj.calculatedDistance = distance;
+        jobObj.distanceText = distanceText;
+        return jobObj;
+      });
+
+      // Filter to keep only jobs within 10 km (if coordinates are provided)
+      const nearbyJobs = availableJobsWithDistance.filter(job => {
+        if (job.calculatedDistance !== null && job.calculatedDistance !== undefined) {
+          return job.calculatedDistance <= 10;
+        }
+        return true; // Keep job if coordinates aren't set
+      });
+
       res.json({
         hiredJobs,
-        availableJobs,
+        availableJobs: nearbyJobs,
       });
     }
   } catch (error) {
@@ -235,7 +338,7 @@ router.put('/:id/status', protect, async (req, res) => {
             });
 
             // Client detail-share message
-            const clientText = `Thank you for accepting! Here are my job details and work address:\n\n🏠 Client Name: ${job.name}\n📍 Area: ${job.location}\n📌 Full Address: ${job.fullAddress || 'Shared location'}\n🗺️ GPS Coordinates: ${job.latitude && job.longitude ? `${job.latitude}, ${job.longitude}` : 'Not shared'}\n💰 Price/Budget: ₹${job.money}\n\nLet's coordinate the visiting time here!`;
+            const clientText = `Thank you for accepting! Here are my job details and work address:\n\n🏠 Client Name: ${job.name}\n📞 Contact Number: ${clientUser.phone}\n📍 Area: ${job.location}\n📌 Full Address: ${job.fullAddress || 'Shared location'}\n🗺️ GPS Coordinates: ${job.latitude && job.longitude ? `${job.latitude}, ${job.longitude}` : 'Not shared'}\n💰 Price/Budget: ₹${job.money}\n\nLet's coordinate the visiting time here!`;
 
             await Message.create({
               senderId: clientUser._id.toString(),
@@ -254,6 +357,67 @@ router.put('/:id/status', protect, async (req, res) => {
     }
 
     res.json(updatedJob);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Complete a job, add a review, and update worker rating
+// @route   PUT /api/jobs/:id/complete
+// @access  Private (Client only)
+router.put('/:id/complete', protect, async (req, res) => {
+  const { rating, reviewText } = req.body;
+
+  try {
+    const job = await Job.findById(req.params.id);
+
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    if (job.client.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ message: 'Not authorized to modify this job' });
+    }
+
+    if (!job.hiredWorker) {
+      return res.status(400).json({ message: 'No worker is hired for this job yet' });
+    }
+
+    // 1. Update job status to 'Completed'
+    job.status = 'Completed';
+    await job.save();
+
+    // 2. Fetch worker user
+    const worker = await User.findById(job.hiredWorker);
+    if (worker) {
+      // Ensure rating is bounded correctly within 1 to 5 stars
+      let ratingVal = Number(rating) || 5;
+      if (ratingVal > 5) ratingVal = 5;
+      if (ratingVal < 1) ratingVal = 1;
+
+      // 3. Create review in database
+      const subText = `${job.repair} Service Review`;
+      await Review.create({
+        name: req.user.fullName,
+        sub: subText,
+        text: reviewText || 'Excellent work done! Highly recommended and professional worker.',
+        avatar: req.user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80',
+        rating: ratingVal,
+        workerType: worker.occupation || 'Trade Worker',
+      });
+
+      // 4. Update worker's average rating and jobsCompleted count
+      const oldRating = worker.rating || 4.9;
+      const oldJobs = worker.jobsCompleted || 0;
+      const newJobs = oldJobs + 1;
+      const newRating = ((oldRating * oldJobs) + ratingVal) / newJobs;
+
+      worker.rating = Math.min(parseFloat(newRating.toFixed(1)), 5.0);
+      worker.jobsCompleted = newJobs;
+      await worker.save();
+    }
+
+    res.json({ message: 'Job completed and worker rating updated successfully!', job });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

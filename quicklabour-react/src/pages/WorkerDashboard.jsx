@@ -7,6 +7,7 @@ const WorkerDashboard = () => {
   const [availableJobs, setAvailableJobs] = useState([]);
   const [isOnline, setIsOnline] = useState(sessionStorage.getItem('userOnlineStatus') === 'true');
   const [completedCount, setCompletedCount] = useState(Number(sessionStorage.getItem('userJobsCompleted')) || 18);
+  const [workerRating, setWorkerRating] = useState(sessionStorage.getItem('userRating') || '4.9');
   const [actionAlert, setActionAlert] = useState('');
 
   // Retrieve session variables if user signed up
@@ -20,8 +21,10 @@ const WorkerDashboard = () => {
   const fetchJobs = async () => {
     try {
       const data = await api.getJobs();
-      setHiredJobs(data.hiredJobs || []);
-      setAvailableJobs(data.availableJobs || []);
+      const sortedHired = [...(data.hiredJobs || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const sortedAvailable = [...(data.availableJobs || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setHiredJobs(sortedHired);
+      setAvailableJobs(sortedAvailable);
     } catch (error) {
       console.error('Error fetching jobs:', error.message);
     }
@@ -30,10 +33,12 @@ const WorkerDashboard = () => {
   useEffect(() => {
     fetchJobs();
     
-    // Sync completed jobs count from profile
+    // Sync completed jobs count and rating from profile
     api.getProfile().then(user => {
       setCompletedCount(user.jobsCompleted);
+      setWorkerRating(user.rating !== undefined ? user.rating : '4.9');
       sessionStorage.setItem('userJobsCompleted', user.jobsCompleted);
+      sessionStorage.setItem('userRating', user.rating !== undefined ? user.rating : '4.9');
     }).catch(err => console.error(err));
   }, []);
 
@@ -53,7 +58,7 @@ const WorkerDashboard = () => {
     client: job.client?.fullName || 'Hiring Client',
     title: job.title,
     rate: `₹${job.money}/day`,
-    distance: `${(idx + 1.2).toFixed(1)} km away`,
+    distance: job.distanceText || `${(idx + 1.2).toFixed(1)} km away`,
     location: job.location,
     fullAddress: job.fullAddress || '',
     latitude: job.latitude || null,
@@ -61,12 +66,20 @@ const WorkerDashboard = () => {
     avatar: job.client?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80'
   }));
 
+  // Calculate dynamic monthly earnings based on actual job budget and fallback base rate
+  const completedHiredJobs = hiredJobs.filter(j => j.status === 'Completed');
+  const actualEarnings = completedHiredJobs.reduce((sum, job) => sum + (job.money || 0), 0);
+  const baseMockEarnings = (completedCount > completedHiredJobs.length)
+    ? (completedCount - completedHiredJobs.length) * 880
+    : 0;
+  const totalEarnings = baseMockEarnings + actualEarnings;
+
   // Calculate dynamic stats
   const stats = {
     completedJobs: completedCount,
-    monthlyEarnings: `₹${(completedCount * 1250).toLocaleString('en-IN')}`,
+    monthlyEarnings: `₹${totalEarnings.toLocaleString('en-IN')}`,
     activeJobsToday: hiredJobs.filter(j => j.status === 'Accepted').length,
-    rating: sessionRating
+    rating: workerRating
   };
 
   const handleAcceptJob = async (id, clientName) => {
@@ -312,21 +325,21 @@ const WorkerDashboard = () => {
               <div className="mb-3">
                 <div className="d-flex justify-content-between small mb-1 fw-700 text-muted">
                   <span>Monthly Goal (₹30,000)</span>
-                  <span>82%</span>
+                  <span>{Math.min(Math.round((totalEarnings / 30000) * 100), 100)}%</span>
                 </div>
                 <div className="progress rounded-pill" style={{ height: '8px' }}>
                   <div 
                     className="progress-bar bg-success" 
                     role="progressbar" 
-                    style={{ width: '82%', borderRadius: '50px' }} 
-                    aria-valuenow="82" 
+                    style={{ width: `${Math.min(Math.round((totalEarnings / 30000) * 100), 100)}%`, borderRadius: '50px' }} 
+                    aria-valuenow={Math.min(Math.round((totalEarnings / 30000) * 100), 100)} 
                     aria-valuemin="0" 
                     aria-valuemax="100"
                   ></div>
                 </div>
               </div>
               <p className="small text-muted mb-0" style={{ lineHeight: '1.5' }}>
-                You have earned **₹24,800** out of your monthly target of **₹30,000**. Keep your status **Online** to hit your goal!
+                You have earned <strong className="fw-700 text-dark">₹{totalEarnings.toLocaleString('en-IN')}</strong> out of your monthly target of <strong className="fw-700 text-dark">₹30,000</strong>. Keep your status <strong className="fw-700 text-success">Online</strong> to hit your goal!
               </p>
             </div>
           </div>

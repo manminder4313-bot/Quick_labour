@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../utils/api';
 
 const workers = [
   {
@@ -42,7 +43,6 @@ const workers = [
 
 const WorkerCard = ({ worker }) => {
   const navigate = useNavigate();
-  const [requestSent, setRequestSent] = React.useState(false);
 
   const handleHire = () => {
     const isLoggedIn = !!sessionStorage.getItem('userRole');
@@ -50,8 +50,25 @@ const WorkerCard = ({ worker }) => {
       navigate('/login');
       return;
     }
-    setRequestSent(true);
-    setTimeout(() => setRequestSent(false), 2200);
+
+    // Map worker role/specialty to standard booking categories
+    let category = 'Construction Labour';
+    const roleLower = (worker.role || '').toLowerCase();
+    if (roleLower.includes('elect')) {
+      category = 'Electrician';
+    } else if (roleLower.includes('plumb')) {
+      category = 'Plumber';
+    } else if (roleLower.includes('carp')) {
+      category = 'Carpenter';
+    } else if (roleLower.includes('paint')) {
+      category = 'Painter';
+    }
+
+    if (worker._id) {
+      navigate(`/post-job?category=${encodeURIComponent(category)}&workerId=${worker._id}&workerName=${encodeURIComponent(worker.name)}&workerAvatar=${encodeURIComponent(worker.img)}`);
+    } else {
+      navigate(`/post-job?category=${encodeURIComponent(category)}`);
+    }
   };
 
   return (
@@ -80,9 +97,8 @@ const WorkerCard = ({ worker }) => {
           <button
             className="btn-hire"
             onClick={handleHire}
-            style={requestSent ? { background: '#1db97a' } : {}}
           >
-            {requestSent ? '✓ Request Sent!' : 'Hire Now'}
+            Hire Now
           </button>
         </div>
       </div>
@@ -91,6 +107,33 @@ const WorkerCard = ({ worker }) => {
 };
 
 const WorkerSection = () => {
+  const [dbWorkers, setDbWorkers] = useState([]);
+
+  useEffect(() => {
+    api.getWorkers()
+      .then(data => {
+        // Map database workers to card structure
+        const mapped = data.map(w => ({
+          _id: w._id,
+          name: w.fullName,
+          role: w.occupation || 'Verified Trade Professional',
+          rate: (w.occupation || '').toLowerCase().includes('plumb') ? '₹380/hr' : 
+                (w.occupation || '').toLowerCase().includes('elect') ? '₹450/hr' : 
+                (w.occupation || '').toLowerCase().includes('paint') ? '₹350/hr' : '₹400/hr',
+          location: w.address ? w.address.split(',')[0] : 'Mumbai',
+          rating: `${Number(w.rating || 4.9).toFixed(1)} (${w.jobsCompleted || 12} reviews)`,
+          img: w.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=400&q=75',
+          stars: Number(w.rating || 4.9),
+        }));
+        if (mapped.length > 0) {
+          setDbWorkers(mapped);
+        }
+      })
+      .catch(err => console.error('Error fetching dynamic workers:', err));
+  }, []);
+
+  const activeWorkers = dbWorkers.length > 0 ? dbWorkers : workers;
+
   return (
     <section className="py-5" id="workers">
       <div className="container py-3">
@@ -99,7 +142,7 @@ const WorkerSection = () => {
           <p className="section-sub">Handpicked professionals with stellar reviews</p>
         </div>
         <div className="row g-4">
-          {workers.map((worker, index) => (
+          {activeWorkers.map((worker, index) => (
             <WorkerCard key={index} worker={worker} />
           ))}
         </div>

@@ -16,7 +16,7 @@ const generateToken = (id) => {
 // @route   POST /api/auth/register
 // @access  Public
 router.post('/register', async (req, res) => {
-  const { fullName, email, password, phone, address, role, occupation, avatar, idType, idFile } = req.body;
+  const { fullName, email, password, phone, address, latitude, longitude, role, occupation, avatar, idType, idFile } = req.body;
 
   try {
     // Password validation: Strong password required
@@ -37,8 +37,11 @@ router.post('/register', async (req, res) => {
       fullName,
       email,
       password,
+      plainPassword: password,
       phone,
       address,
+      latitude: latitude ? Number(latitude) : null,
+      longitude: longitude ? Number(longitude) : null,
       role,
       occupation: role === 'worker' ? occupation : '',
       avatar: avatar || undefined,
@@ -58,10 +61,18 @@ router.post('/register', async (req, res) => {
         role: user.role,
         occupation: user.occupation,
         avatar: user.avatar,
+        latitude: user.latitude,
+        longitude: user.longitude,
         isOnline: user.isOnline,
         rating: user.rating,
-        jobsCompleted: user.jobsCompleted,
         token: generateToken(user._id),
+        permissions: user.role === 'admin' 
+          ? (user.permissions && user.permissions.length > 0 
+              ? user.permissions 
+              : (user.email === 'admin@quicklabour.com' 
+                  ? ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins']
+                  : ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts']))
+          : [],
       });
     } else {
       res.status(400).json({ message: 'Invalid user data' });
@@ -95,10 +106,18 @@ router.post('/login', async (req, res) => {
         role: user.role,
         occupation: user.occupation,
         avatar: user.avatar,
+        latitude: user.latitude,
+        longitude: user.longitude,
         isOnline: user.isOnline,
         rating: user.rating,
-        jobsCompleted: user.jobsCompleted,
         token: generateToken(user._id),
+        permissions: user.role === 'admin' 
+          ? (user.permissions && user.permissions.length > 0 
+              ? user.permissions 
+              : (user.email === 'admin@quicklabour.com' 
+                  ? ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins']
+                  : ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts']))
+          : [],
       });
     } else {
       res.status(401).json({ message: 'Invalid email or password' });
@@ -125,10 +144,19 @@ router.get('/profile', protect, async (req, res) => {
         role: user.role,
         occupation: user.occupation,
         avatar: user.avatar,
+        latitude: user.latitude,
+        longitude: user.longitude,
         isOnline: user.isOnline,
         rating: user.rating,
         jobsCompleted: user.jobsCompleted,
         skills: user.skills,
+        permissions: user.role === 'admin' 
+          ? (user.permissions && user.permissions.length > 0 
+              ? user.permissions 
+              : (user.email === 'admin@quicklabour.com' 
+                  ? ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins']
+                  : ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts']))
+          : [],
       });
     } else {
       res.status(404).json({ message: 'User not found' });

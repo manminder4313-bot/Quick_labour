@@ -29,16 +29,40 @@ const AdminDashboard = () => {
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [selectedCredentials, setSelectedCredentials] = useState(null);
 
-  // Add Administrator Modal state
+  // Password change states within credentials auditor modal
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [showPlaintextInAuditor, setShowPlaintextInAuditor] = useState(false);
+
+  // Add Admin modal states
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
-  const [showAdminPassword, setShowAdminPassword] = useState(false);
-  const [newAdminData, setNewAdminData] = useState({
+  const [adminForm, setAdminForm] = useState({
     fullName: '',
     email: '',
     password: '',
     phone: '',
     avatar: '',
   });
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [adminError, setAdminError] = useState('');
+
+
+
+  const [userPermissions, setUserPermissions] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('userPermissions');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const hasPermission = (tab) => {
+    // Root admin has total access
+    if (sessionStorage.getItem('userEmail') === 'admin@quicklabour.com') return true;
+    return userPermissions.includes(tab);
+  };
+
+  const isSuperAdmin = hasPermission('admins');
 
   useEffect(() => {
     // Check authorization: must be logged in as admin
@@ -51,30 +75,109 @@ const AdminDashboard = () => {
     fetchAdminData();
   }, [navigate]);
 
+  useEffect(() => {
+    const tabsList = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins'];
+    const allowedTabs = tabsList.filter(t => hasPermission(t));
+    if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0]);
+    }
+  }, [activeTab, userPermissions]);
+
+  const handleRestoreDefaultPassword = async () => {
+    let defaultPwd = '';
+    if (selectedCredentials.role === 'Client') {
+      defaultPwd = 'client123';
+    } else if (selectedCredentials.role === 'Worker / Labour') {
+      defaultPwd = 'worker123';
+    } else {
+      defaultPwd = 'admin123';
+    }
+
+    if (!window.confirm(`Are you sure you want to restore this user's password back to the default original plaintext password ('${defaultPwd}')?`)) {
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const response = await api.put('/admin/reset-password', {
+        userId: selectedCredentials.id,
+        role: selectedCredentials.role,
+        newPassword: defaultPwd,
+      });
+
+      setSelectedCredentials({
+        ...selectedCredentials,
+        password: '[Password restored to default plaintext. Refresh directory to load new Bcrypt hash]'
+      });
+
+      alert(`🎉 Password restored to default original password successfully!\n\nPlaintext Password: "${defaultPwd}"`);
+      fetchAdminData();
+    } catch (err) {
+      alert(err.message || 'Failed to restore default password');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
+  const closeAuditorModal = () => {
+    setSelectedCredentials(null);
+    setShowPlaintextInAuditor(false);
+  };
+
   const fetchAdminData = async () => {
     setLoading(true);
     setError('');
     try {
+      // Sync permissions in real-time
+      try {
+        const profile = await api.get('/auth/profile');
+        if (profile && profile.permissions) {
+          sessionStorage.setItem('userPermissions', JSON.stringify(profile.permissions));
+          setUserPermissions(profile.permissions);
+        }
+      } catch (profileErr) {
+        console.warn('Failed to sync permissions:', profileErr);
+      }
+
       const statsRes = await api.get('/admin/stats');
       setStats(statsRes);
 
-      const clientsRes = await api.get('/admin/clients');
-      setClients(clientsRes);
+      const storedPerms = sessionStorage.getItem('userPermissions');
+      const activePerms = storedPerms ? JSON.parse(storedPerms) : [];
+      const hasPerm = (tab) => {
+        if (sessionStorage.getItem('userEmail') === 'admin@quicklabour.com') return true;
+        return activePerms.includes(tab);
+      };
 
-      const workersRes = await api.get('/admin/workers');
-      setWorkers(workersRes);
+      if (hasPerm('clients')) {
+        const clientsRes = await api.get('/admin/clients');
+        setClients(clientsRes);
+      }
 
-      const jobsRes = await api.get('/admin/jobs');
-      setJobs(jobsRes);
+      if (hasPerm('workers')) {
+        const workersRes = await api.get('/admin/workers');
+        setWorkers(workersRes);
+      }
 
-      const contactsRes = await api.get('/admin/contacts');
-      setContacts(contactsRes);
+      if (hasPerm('jobs')) {
+        const jobsRes = await api.get('/admin/jobs');
+        setJobs(jobsRes);
+      }
 
-      const reviewsRes = await api.get('/admin/reviews');
-      setReviews(reviewsRes);
+      if (hasPerm('contacts')) {
+        const contactsRes = await api.get('/admin/contacts');
+        setContacts(contactsRes);
+      }
 
-      const adminsRes = await api.get('/admin/admins');
-      setAdmins(adminsRes);
+      if (hasPerm('reviews')) {
+        const reviewsRes = await api.get('/admin/reviews');
+        setReviews(reviewsRes);
+      }
+
+      if (hasPerm('admins')) {
+        const adminsRes = await api.get('/admin/admins');
+        setAdmins(adminsRes);
+      }
     } catch (err) {
       setError(err.message || 'Failed to fetch administrative data');
     } finally {
@@ -97,47 +200,41 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleCreateAdminSubmit = async (e) => {
+    e.preventDefault();
+    setCreatingAdmin(true);
+    setAdminError('');
+    try {
+      // By default give full access permissions
+      const permissions = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins'];
+      await api.post('/admin/admins', {
+        ...adminForm,
+        permissions
+      });
+      
+      alert('🎉 New admin account created successfully with FULL ACCESS!');
+      setShowAddAdminModal(false);
+      setAdminForm({
+        fullName: '',
+        email: '',
+        password: '',
+        phone: '',
+        avatar: '',
+      });
+      fetchAdminData();
+    } catch (err) {
+      setAdminError(err.message || 'Failed to create admin. Password must be strong (at least 8 chars, 1 uppercase, 1 lowercase, 1 number, and 1 special char).');
+    } finally {
+      setCreatingAdmin(false);
+    }
+  };
+
   const handleLogout = () => {
     sessionStorage.clear();
     navigate('/login');
   };
 
-  const handleCreateAdmin = async (e) => {
-    e.preventDefault();
 
-    // Client-side strong password validation check
-    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
-    if (!strongPasswordRegex.test(newAdminData.password)) {
-      alert('🔒 Password is too weak!\n\nIt must be at least 8 characters long, and contain:\n- At least 1 uppercase letter\n- At least 1 lowercase letter\n- At least 1 number\n- At least 1 special character (@$!%*?&#)');
-      return;
-    }
-
-    try {
-      const created = await api.post('/admin/admins', newAdminData);
-      setAdmins([created, ...admins]);
-      setShowAddAdminModal(false);
-      setNewAdminData({ fullName: '', email: '', password: '', phone: '', avatar: '' });
-
-      // Refresh stats
-      const statsRes = await api.get('/admin/stats');
-      setStats(statsRes);
-
-      alert('🎉 New Administrator account created successfully!');
-    } catch (err) {
-      alert(err.message || 'Failed to create administrative account');
-    }
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewAdminData({ ...newAdminData, avatar: reader.result });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   if (loading) {
     return (
@@ -278,27 +375,41 @@ const AdminDashboard = () => {
         {/* Tab Navigator */}
         <div className="card border-0 shadow-sm rounded-4 p-2 mb-4" style={{ background: 'rgba(255, 255, 255, 0.85)' }}>
           <div className="nav nav-pills d-flex flex-wrap gap-1 border-0">
-            <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'overview' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('overview'); setSearchTerm(''); }}>
-              📊 Stats Graph
-            </button>
-            <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'clients' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('clients'); setSearchTerm(''); }}>
-              👥 Clients ({clients.length})
-            </button>
-            <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'workers' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('workers'); setSearchTerm(''); }}>
-              👷 Workers ({workers.length})
-            </button>
-            <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'jobs' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('jobs'); setSearchTerm(''); }}>
-              🛠️ Job Listings ({jobs.length})
-            </button>
-            <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'reviews' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('reviews'); setSearchTerm(''); }}>
-              ⭐ Reviews ({reviews.length})
-            </button>
-            <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'contacts' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('contacts'); setSearchTerm(''); }}>
-              💬 Inquiries ({contacts.length})
-            </button>
-            <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'admins' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('admins'); setSearchTerm(''); }}>
-              🛡️ Admins ({admins.length})
-            </button>
+            {hasPermission('overview') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'overview' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('overview'); setSearchTerm(''); }}>
+                📊 Stats Graph
+              </button>
+            )}
+            {hasPermission('clients') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'clients' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('clients'); setSearchTerm(''); }}>
+                👥 Clients ({clients.length})
+              </button>
+            )}
+            {hasPermission('workers') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'workers' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('workers'); setSearchTerm(''); }}>
+                👷 Workers ({workers.length})
+              </button>
+            )}
+            {hasPermission('jobs') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'jobs' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('jobs'); setSearchTerm(''); }}>
+                🛠️ Job Listings ({jobs.length})
+              </button>
+            )}
+            {hasPermission('reviews') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'reviews' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('reviews'); setSearchTerm(''); }}>
+                ⭐ Reviews ({reviews.length})
+              </button>
+            )}
+            {hasPermission('contacts') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'contacts' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('contacts'); setSearchTerm(''); }}>
+                💬 Inquiries ({contacts.length})
+              </button>
+            )}
+            {hasPermission('admins') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'admins' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('admins'); setSearchTerm(''); }}>
+                🛡️ Admins ({admins.length})
+              </button>
+            )}
           </div>
         </div>
 
@@ -316,7 +427,7 @@ const AdminDashboard = () => {
         <div className="glass-card rounded-4 p-4 shadow-sm border-0" style={{ background: 'rgba(255, 255, 255, 0.85)', minHeight: '400px' }}>
 
           {/* TAB 1: OVERVIEW */}
-          {activeTab === 'overview' && (
+          {activeTab === 'overview' && hasPermission('overview') && (
             <div>
               <h4 className="fw-bold text-dark mb-4"><i className="bi bi-graph-up me-2 text-primary"></i> Platform Revenue & Performance Metrics</h4>
               <div className="row g-4">
@@ -355,7 +466,7 @@ const AdminDashboard = () => {
           )}
 
           {/* TAB 2: CLIENTS */}
-          {activeTab === 'clients' && (
+          {activeTab === 'clients' && hasPermission('clients') && (
             <div className="table-responsive">
               <table className="table align-middle table-hover border-0">
                 <thead className="table-light">
@@ -393,9 +504,11 @@ const AdminDashboard = () => {
                               className="btn btn-sm rounded-3 fw-bold text-white px-3"
                               style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }}
                               onClick={() => setSelectedCredentials({
+                                id: client._id,
                                 name: client.fullName,
                                 email: client.email,
                                 password: client.password || 'Secret Encrypted',
+                                plainPassword: client.plainPassword || 'client123',
                                 role: 'Client',
                                 phone: client.phone,
                                 address: client.address || 'Not Provided'
@@ -421,7 +534,7 @@ const AdminDashboard = () => {
           )}
 
           {/* TAB 3: WORKERS */}
-          {activeTab === 'workers' && (
+          {activeTab === 'workers' && hasPermission('workers') && (
             <>
               {/* Horizontal Scrollable Specialty filter bar */}
               <div className="d-flex align-items-center gap-2 mb-4 overflow-auto pb-2" style={{ whiteSpace: 'nowrap', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
@@ -495,9 +608,11 @@ const AdminDashboard = () => {
                               className="btn btn-sm rounded-3 fw-bold text-white px-3"
                               style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }}
                               onClick={() => setSelectedCredentials({
+                                id: worker._id,
                                 name: worker.fullName,
                                 email: worker.email,
                                 password: worker.password || 'Secret Encrypted',
+                                plainPassword: worker.plainPassword || 'worker123',
                                 role: 'Worker / Labour',
                                 phone: worker.phone,
                                 address: worker.address || 'Not Provided',
@@ -525,7 +640,7 @@ const AdminDashboard = () => {
           )}
 
           {/* TAB 4: JOBS */}
-          {activeTab === 'jobs' && (
+          {activeTab === 'jobs' && hasPermission('jobs') && (
             <div className="table-responsive">
               <table className="table align-middle table-hover border-0">
                 <thead className="table-light">
@@ -588,7 +703,7 @@ const AdminDashboard = () => {
           )}
 
           {/* TAB 5: SUPPORT TICKETS (CONTACTS) */}
-          {activeTab === 'contacts' && (
+          {activeTab === 'contacts' && hasPermission('contacts') && (
             <div>
               <div className="row g-3">
                 {filteredContacts.length > 0 ? (
@@ -621,7 +736,7 @@ const AdminDashboard = () => {
           )}
 
           {/* TAB 6: REVIEWS MODERATION */}
-          {activeTab === 'reviews' && (
+          {activeTab === 'reviews' && hasPermission('reviews') && (
             <div className="row g-3">
               {filteredReviews.length > 0 ? (
                 filteredReviews.map((review) => (
@@ -655,12 +770,16 @@ const AdminDashboard = () => {
           )}
 
           {/* TAB 7: ADMINS DIRECTORY */}
-          {activeTab === 'admins' && (
+          {activeTab === 'admins' && isSuperAdmin && (
             <div>
               <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
                 <h5 className="fw-bold mb-0 text-dark">Administrative Authority Officers</h5>
-                <button className="btn btn-primary rounded-3 px-3 py-2 fw-bold btn-sm" onClick={() => setShowAddAdminModal(true)}>
-                  <i className="bi bi-person-plus-fill me-1"></i> Add Administrator
+                <button 
+                  className="btn btn-success rounded-3 fw-bold px-3 py-2 shadow-sm border-0 d-inline-flex align-items-center gap-2 animate-pulse"
+                  style={{ background: 'linear-gradient(135deg, #198754, #146c43)', transition: 'all 0.2s' }}
+                  onClick={() => setShowAddAdminModal(true)}
+                >
+                  <i className="bi bi-person-plus-fill"></i> Create New Admin
                 </button>
               </div>
               <div className="table-responsive">
@@ -696,7 +815,9 @@ const AdminDashboard = () => {
                           <td>{admin.email}</td>
                           <td>{admin.phone}</td>
                           <td>
-                            <span className="badge bg-danger bg-opacity-10 text-danger rounded-pill px-3 py-1.5 fw-bold">Full Access</span>
+                            <span className={`badge rounded-pill px-3 py-1.5 fw-bold ${admin.permissions && admin.permissions.includes('admins') ? 'bg-danger bg-opacity-10 text-danger' : 'bg-info bg-opacity-10 text-info'}`}>
+                              {admin.permissions && admin.permissions.includes('admins') ? 'Full Access' : `Custom (${admin.permissions ? admin.permissions.length : 0} modules)`}
+                            </span>
                           </td>
                           <td className="text-center">
                             <div className="d-flex justify-content-center gap-2">
@@ -704,12 +825,14 @@ const AdminDashboard = () => {
                                 className="btn btn-sm rounded-3 fw-bold text-white px-3"
                                 style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }}
                                 onClick={() => setSelectedCredentials({
+                                  id: admin._id,
                                   name: admin.fullName,
                                   email: admin.email,
                                   password: admin.password || 'Secret Encrypted',
+                                  plainPassword: admin.plainPassword || 'admin123',
                                   role: 'Administrator',
                                   phone: admin.phone || 'Not Provided',
-                                  address: 'Full System Control Center Access'
+                                  address: admin.permissions && admin.permissions.includes('admins') ? 'Full Access' : `Custom Permissions: ${admin.permissions ? admin.permissions.join(', ') : ''}`
                                 })}
                               >
                                 ℹ️ More Details
@@ -788,7 +911,7 @@ const AdminDashboard = () => {
                   <h5 className="modal-title fw-bold m-0 d-flex align-items-center gap-2">
                     🔑 Security Credentials
                   </h5>
-                  <button type="button" className="btn-close btn-close-white" onClick={() => setSelectedCredentials(null)}></button>
+                  <button type="button" className="btn-close btn-close-white" onClick={closeAuditorModal}></button>
                 </div>
                 <div className="mt-2 small opacity-75">Secure Administrative Audit Directory</div>
               </div>
@@ -833,34 +956,70 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
-                {/* Password Field */}
+                {/* Password Field with Hashing Decryption/Reveal Toggle */}
                 <div className="mb-3">
-                  <label className="form-label small fw-bold text-muted">🔒 Password (Bcrypt Hash Record)</label>
+                  <label className="form-label small fw-bold text-muted">
+                    {selectedCredentials.role === 'Administrator' ? '🔒 Password (Bcrypt Hash Record)' : (showPlaintextInAuditor ? '🔑 Original Password (Plaintext)' : '🔒 Password (Bcrypt Hash Record)')}
+                  </label>
                   <div className="input-group">
                     <input
                       type="text"
-                      className="form-control rounded-start-3 bg-light border-1 font-monospace"
+                      className="form-control rounded-start-3 bg-light border-1 font-monospace fw-bold text-muted"
                       readOnly
-                      value={selectedCredentials.password}
-                      style={{ fontSize: '0.8rem', letterSpacing: '0.5px' }}
+                      value={selectedCredentials.role === 'Administrator' ? selectedCredentials.password : (showPlaintextInAuditor ? selectedCredentials.plainPassword : selectedCredentials.password)}
+                      style={{ 
+                        fontSize: (selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? '0.95rem' : '0.8rem', 
+                        letterSpacing: '0.5px'
+                      }}
                     />
+                    {selectedCredentials.role !== 'Administrator' && (
+                      <button
+                        className="btn btn-outline-primary px-3 fw-bold"
+                        type="button"
+                        onClick={() => setShowPlaintextInAuditor(!showPlaintextInAuditor)}
+                        title={showPlaintextInAuditor ? "Show Bcrypt Hash" : "Show Plaintext Password"}
+                      >
+                        {showPlaintextInAuditor ? '🔒 Hash' : '👁️ Reveal'}
+                      </button>
+                    )}
                     <button
                       className="btn btn-outline-secondary px-3"
-                      style={{ borderRadius: '0 10px 10px 0' }}
+                      style={{ borderRadius: selectedCredentials.role === 'Administrator' ? '0 10px 10px 0' : '0' }}
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText(selectedCredentials.password);
-                        alert('📋 Secure Password record copied to clipboard!');
+                        const copyValue = (selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? selectedCredentials.plainPassword : selectedCredentials.password;
+                        navigator.clipboard.writeText(copyValue);
+                        alert(`📋 ${(selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? 'Plaintext Password' : 'Secure Password record'} copied to clipboard!`);
                       }}
-                      title="Copy Password Record"
+                      title="Copy Value"
                     >
                       📋 Copy
                     </button>
                   </div>
-                  <div className="form-text small text-danger mt-1" style={{ fontSize: '0.72rem' }}>
-                    🛡️ Password stored securely using secure cryptographic algorithms.
+                  <div className="form-text small mt-1 d-flex justify-content-between align-items-center" style={{ fontSize: '0.75rem' }}>
+                    <span className={(selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? 'text-success fw-bold' : 'text-danger'}>
+                      {selectedCredentials.role === 'Administrator' ? '🛡️ Administrator keys are fully secure and unrevealable by sub-admins.' : (showPlaintextInAuditor ? '🟢 Displaying plaintext original credentials.' : '🛡️ Password encrypted securely using Bcrypt.')}
+                    </span>
                   </div>
                 </div>
+
+                {/* Restore Default Original Password Action */}
+                {selectedCredentials.role !== 'Administrator' && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      className="btn btn-warning w-100 rounded-3 fw-bold text-dark d-flex align-items-center justify-content-center gap-2 py-2.5 shadow-sm transition-all"
+                      style={{ border: '1.5px solid #d39e00' }}
+                      onClick={handleRestoreDefaultPassword}
+                      disabled={isUpdatingPassword}
+                    >
+                      🔄 Restore Default Original Password
+                    </button>
+                    <div className="form-text text-muted small text-center mt-1">
+                      Resets hash to original plain-text: <strong>{selectedCredentials.role === 'Client' ? 'client123' : 'worker123'}</strong>
+                    </div>
+                  </div>
+                )}
 
                 <hr />
 
@@ -886,7 +1045,7 @@ const AdminDashboard = () => {
 
               {/* Modal Footer */}
               <div className="modal-footer border-0 bg-light rounded-bottom-4 py-2">
-                <button type="button" className="btn btn-secondary rounded-3 px-4 fw-bold" onClick={() => setSelectedCredentials(null)}>Close Auditor</button>
+                <button type="button" className="btn btn-secondary rounded-3 px-4 fw-bold" onClick={closeAuditorModal}>Close Auditor</button>
               </div>
 
             </div>
@@ -894,98 +1053,178 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* MODAL FOR REGISTERING NEW ADMINISTRATORS */}
+      {/* MODAL FOR CREATING NEW ADMIN */}
       {showAddAdminModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+        <div className="modal show d-block animate__animated animate__fadeIn" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', zIndex: 1050 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 rounded-4 shadow-lg animate__animated animate__fadeInDown">
-              <div className="modal-header border-0 bg-light rounded-top-4 py-3">
-                <h5 className="modal-title fw-bold text-dark"><i className="bi bi-person-plus-fill text-primary me-2"></i> Register New Administrator</h5>
-                <button type="button" className="btn-close" onClick={() => setShowAddAdminModal(false)}></button>
-              </div>
-              <form onSubmit={handleCreateAdmin}>
-                <div className="modal-body p-4 text-start">
-                  <div className="mb-3">
-                    <label className="form-label small fw-bold text-muted">Full Name</label>
-                    <input
-                      type="text"
-                      className="form-control rounded-3 py-2 border-1"
-                      placeholder="e.g. Gurpreet Singh"
-                      required
-                      value={newAdminData.fullName}
-                      onChange={(e) => setNewAdminData({ ...newAdminData, fullName: e.target.value })}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-bold text-muted">Email Address</label>
-                    <input
-                      type="email"
-                      className="form-control rounded-3 py-2 border-1"
-                      placeholder="e.g. gurpreet@quicklabour.com"
-                      required
-                      value={newAdminData.email}
-                      onChange={(e) => setNewAdminData({ ...newAdminData, email: e.target.value })}
-                    />
-                  </div>
-                   <div className="mb-3">
-                    <label className="form-label small fw-bold text-muted">Secure Password</label><div className="position-relative">
-                    <input
-                      type={showAdminPassword ? "text" : "password"}
-                      className="form-control rounded-3 py-2 border-1"
-                      placeholder="At least 8 characters with numbers & symbols" style={{ paddingRight: '45px' }}
-                      required
-                      value={newAdminData.password}
-                      onChange={(e) => setNewAdminData({ ...newAdminData, password: e.target.value })}
-                    />
-                    <button
-                      type="button"
-                      className="btn position-absolute border-0 bg-transparent"
-                      style={{ right: '10px', top: '4px', zIndex: 10, padding: '5px' }}
-                      onClick={() => setShowAdminPassword(!showAdminPassword)}
-                    >
-                      <i className={`bi ${showAdminPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
-                    </button>
-                    </div>
-                    <div className="form-text small text-muted">
-                      Password must contain at least 8 characters, 1 uppercase, 1 lowercase, 1 number, and 1 special symbol.
-                    </div>
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-bold text-muted">Contact Phone</label>
-                    <input
-                      type="text"
-                      className="form-control rounded-3 py-2 border-1"
-                      placeholder="e.g. +91 98765 43210"
-                      required
-                      value={newAdminData.phone}
-                      onChange={(e) => setNewAdminData({ ...newAdminData, phone: e.target.value })}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label small fw-bold text-muted">Profile Photo</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="form-control rounded-3 py-2 border-1"
-                      onChange={handleFileChange}
-                    />
-                    {newAdminData.avatar && (
-                      <div className="mt-2 text-center">
-                        <img
-                          src={newAdminData.avatar}
-                          alt="Profile Preview"
-                          className="rounded-circle border"
-                          style={{ width: '60px', height: '60px', objectFit: 'cover' }}
-                        />
-                      </div>
-                    )}
-                  </div>
+            <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden" style={{ border: '1.5px solid #e8ecf8' }}>
+              
+              {/* Modal Header */}
+              <div className="p-4 text-white" style={{ background: 'linear-gradient(135deg, #198754 0%, #146c43 100%)' }}>
+                <div className="d-flex justify-content-between align-items-center">
+                  <h5 className="modal-title fw-bold m-0 d-flex align-items-center gap-2">
+                    🛡️ Add New Administrative Officer
+                  </h5>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowAddAdminModal(false)}></button>
                 </div>
-                <div className="modal-footer border-0 bg-light rounded-bottom-4 py-3 d-flex gap-2 justify-content-end">
-                  <button type="button" className="btn btn-secondary rounded-3 px-3 fw-bold" onClick={() => setShowAddAdminModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary rounded-3 px-4 fw-bold">Create Profile</button>
+                <div className="mt-2 small opacity-75">Create an administrative account with Full Authority Access</div>
+              </div>
+
+              {/* Modal Body */}
+              <form onSubmit={handleCreateAdminSubmit}>
+                <div className="modal-body p-4 bg-white text-start">
+                  {adminError && (
+                    <div className="alert alert-danger small py-2 rounded-3 border-0 mb-3">
+                      ⚠️ {adminError}
+                    </div>
+                  )}
+
+                  {/* Full Name */}
+                  <div className="mb-3">
+                    <label htmlFor="adminName" className="form-label small fw-bold text-muted">👤 Full Officer Name</label>
+                    <input 
+                      type="text" 
+                      className="form-control rounded-3 p-2.5" 
+                      id="adminName" 
+                      required
+                      placeholder="e.g. Inspector Gurpreet Singh"
+                      value={adminForm.fullName}
+                      onChange={(e) => setAdminForm({...adminForm, fullName: e.target.value})}
+                      style={{ border: '1.5px solid #cbd5e1' }}
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div className="mb-3">
+                    <label htmlFor="adminEmail" className="form-label small fw-bold text-muted">📧 Administrative Email Address</label>
+                    <input 
+                      type="email" 
+                      className="form-control rounded-3 p-2.5" 
+                      id="adminEmail" 
+                      required
+                      placeholder="e.g. gurpreet@quicklabour.com"
+                      value={adminForm.email}
+                      onChange={(e) => setAdminForm({...adminForm, email: e.target.value})}
+                      style={{ border: '1.5px solid #cbd5e1' }}
+                    />
+                  </div>
+
+                  {/* Phone */}
+                  <div className="mb-3">
+                    <label htmlFor="adminPhone" className="form-label small fw-bold text-muted">📞 Contact Phone Number</label>
+                    <input 
+                      type="tel" 
+                      className="form-control rounded-3 p-2.5" 
+                      id="adminPhone" 
+                      required
+                      placeholder="e.g. +91 98765-43210"
+                      value={adminForm.phone}
+                      onChange={(e) => setAdminForm({...adminForm, phone: e.target.value})}
+                      style={{ border: '1.5px solid #cbd5e1' }}
+                    />
+                  </div>
+
+                  {/* Profile Avatar Upload */}
+                  <div className="mb-3">
+                    <label className="form-label small fw-bold text-muted d-block">🖼️ Profile Avatar Photo (Optional)</label>
+                    <div className="d-flex align-items-center gap-3 p-2 rounded-3 bg-light" style={{ border: '1.5px dashed #cbd5e1' }}>
+                      {adminForm.avatar ? (
+                        <img 
+                          src={adminForm.avatar} 
+                          alt="Preview" 
+                          className="rounded-circle border border-2 border-success shadow-sm" 
+                          style={{ width: '56px', height: '56px', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div className="rounded-circle bg-white d-flex align-items-center justify-content-center text-muted border shadow-sm" style={{ width: '56px', height: '56px', fontSize: '1.5rem' }}>
+                          👤
+                        </div>
+                      )}
+                      <div className="flex-fill">
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          id="adminAvatarFile" 
+                          className="d-none" 
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setAdminForm({ ...adminForm, avatar: reader.result });
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <label 
+                          htmlFor="adminAvatarFile" 
+                          className="btn btn-primary btn-sm rounded-3 fw-bold px-3 py-2 text-nowrap"
+                          style={{ cursor: 'pointer', background: 'linear-gradient(135deg, #0d6efd, #6610f2)', border: 'none' }}
+                        >
+                          Choose from Photos
+                        </label>
+                        {adminForm.avatar && (
+                          <button 
+                            type="button" 
+                            className="btn btn-link text-danger btn-sm ms-2 p-0 text-decoration-none fw-bold"
+                            onClick={() => setAdminForm({ ...adminForm, avatar: '' })}
+                          >
+                            Remove
+                          </button>
+                        )}
+                        <div className="form-text small text-muted mt-1" style={{ fontSize: '0.7rem', lineHeight: '1.2' }}>
+                          Select any image file from your device.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Strong Password */}
+                  <div className="mb-3">
+                    <label htmlFor="adminPassword" className="form-label small fw-bold text-muted">🔑 Strong Password (8+ characters, mixed case, number & symbol)</label>
+                    <input 
+                      type="password" 
+                      className="form-control rounded-3 p-2.5" 
+                      id="adminPassword" 
+                      required
+                      placeholder="e.g. AdminSecure@1313"
+                      value={adminForm.password}
+                      onChange={(e) => setAdminForm({...adminForm, password: e.target.value})}
+                      style={{ border: '1.5px solid #cbd5e1' }}
+                    />
+                    <div className="form-text small text-muted mt-1" style={{ fontSize: '0.75rem' }}>
+                      Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special symbol.
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Modal Footer */}
+                <div className="modal-footer border-0 bg-light rounded-bottom-4 py-3 d-flex gap-2">
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary flex-fill rounded-3 py-2 fw-bold" 
+                    onClick={() => setShowAddAdminModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-success flex-fill rounded-3 py-2 fw-bold"
+                    style={{ background: 'linear-gradient(135deg, #198754, #146c43)', border: 'none' }}
+                    disabled={creatingAdmin}
+                  >
+                    {creatingAdmin ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        Registering...
+                      </>
+                    ) : 'Create & Give Full Access'}
+                  </button>
                 </div>
               </form>
+
             </div>
           </div>
         </div>

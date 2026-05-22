@@ -16,6 +16,10 @@ const labourSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    plainPassword: {
+      type: String,
+      default: '',
+    },
     phone: {
       type: String,
       required: true,
@@ -23,6 +27,14 @@ const labourSchema = new mongoose.Schema(
     address: {
       type: String,
       required: true,
+    },
+    latitude: {
+      type: Number,
+      default: null,
+    },
+    longitude: {
+      type: Number,
+      default: null,
     },
     role: {
       type: String,
