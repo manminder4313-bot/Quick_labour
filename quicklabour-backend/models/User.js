@@ -3,32 +3,68 @@ import Labour from './Labour.js';
 import Admin from './Admin.js';
 
 /**
+ * Helper to create a thenable query object that supports .select() and .limit() chaining.
+ */
+const createThenableQuery = (executor) => {
+  let selectFields = '';
+  let limitCount = 0;
+  
+  const queryObj = {
+    select: (fields) => {
+      selectFields = fields;
+      return queryObj;
+    },
+    limit: (count) => {
+      limitCount = count;
+      return queryObj;
+    },
+    then: (onFulfilled, onRejected) => {
+      return executor(selectFields, limitCount).then(onFulfilled, onRejected);
+    }
+  };
+  return queryObj;
+};
+
+/**
  * Unified User Adapter
  * Intercepts Mongoose queries on the User model and dynamically forwards them
  * to the separate Client, Labour, or Admin collections in MongoDB Atlas.
  */
 const User = {
-  findOne: async (query) => {
-    // Try searching Client first
-    let result = await Client.findOne(query);
-    if (result) return result;
-    
-    // Try searching Labour second
-    result = await Labour.findOne(query);
-    if (result) return result;
-    
-    // Finally search Admin
-    return await Admin.findOne(query);
+  findOne: (query) => {
+    return createThenableQuery(async (selectFields) => {
+      let qClient = Client.findOne(query);
+      if (selectFields) qClient = qClient.select(selectFields);
+      let result = await qClient;
+      if (result) return result;
+      
+      let qLabour = Labour.findOne(query);
+      if (selectFields) qLabour = qLabour.select(selectFields);
+      result = await qLabour;
+      if (result) return result;
+      
+      let qAdmin = Admin.findOne(query);
+      if (selectFields) qAdmin = qAdmin.select(selectFields);
+      return await qAdmin;
+    });
   },
 
-  findById: async (id) => {
-    let result = await Client.findById(id);
-    if (result) return result;
-    
-    result = await Labour.findById(id);
-    if (result) return result;
-    
-    return await Admin.findById(id);
+  findById: (id) => {
+    return createThenableQuery(async (selectFields) => {
+      let qClient = Client.findById(id);
+      if (selectFields) qClient = qClient.select(selectFields);
+      let result = await qClient;
+      if (result) return result;
+      
+      let qLabour = Labour.findById(id);
+      if (selectFields) qLabour = qLabour.select(selectFields);
+      result = await qLabour;
+      if (result) return result;
+      
+      let qAdmin = Admin.findById(id);
+      if (selectFields) qAdmin = qAdmin.select(selectFields);
+      return await qAdmin;
+    });
   },
 
   create: async (data) => {
@@ -42,25 +78,45 @@ const User = {
     throw new Error(`Invalid user role for creation: ${data.role}`);
   },
 
-  find: async (query) => {
-    // If the query is explicitly searching for workers/labours
-    if (query && (query.role === 'worker' || query.occupation)) {
-      const cleanQuery = { ...query };
-      delete cleanQuery.role; // Labour collection holds only workers
-      return await Labour.find(cleanQuery);
-    }
-    
-    // If the query is explicitly searching for clients
-    if (query && query.role === 'client') {
-      const cleanQuery = { ...query };
-      delete cleanQuery.role;
-      return await Client.find(cleanQuery);
-    }
+  find: (query) => {
+    return createThenableQuery(async (selectFields, limitCount) => {
+      // If the query is explicitly searching for workers/labours
+      if (query && (query.role === 'worker' || query.occupation)) {
+        const cleanQuery = { ...query };
+        delete cleanQuery.role; // Labour collection holds only workers
+        let q = Labour.find(cleanQuery);
+        if (selectFields) q = q.select(selectFields);
+        if (limitCount) q = q.limit(limitCount);
+        return await q;
+      }
+      
+      // If the query is explicitly searching for clients
+      if (query && query.role === 'client') {
+        const cleanQuery = { ...query };
+        delete cleanQuery.role;
+        let q = Client.find(cleanQuery);
+        if (selectFields) q = q.select(selectFields);
+        if (limitCount) q = q.limit(limitCount);
+        return await q;
+      }
 
-    // Default general lookup across both collections
-    const clients = await Client.find(query);
-    const workers = await Labour.find(query);
-    return [...clients, ...workers];
+      // Default general lookup across both collections
+      let qClient = Client.find(query);
+      let qLabour = Labour.find(query);
+      if (selectFields) {
+        qClient = qClient.select(selectFields);
+        qLabour = qLabour.select(selectFields);
+      }
+      if (limitCount) {
+        qClient = qClient.limit(limitCount);
+        qLabour = qLabour.limit(limitCount);
+      }
+      const clients = await qClient;
+      const workers = await qLabour;
+      
+      const results = [...clients, ...workers];
+      return limitCount ? results.slice(0, limitCount) : results;
+    });
   }
 };
 

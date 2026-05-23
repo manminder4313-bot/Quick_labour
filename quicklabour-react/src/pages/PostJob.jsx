@@ -75,7 +75,7 @@ const PostJob = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryParams = new URLSearchParams(location.search);
-  const initialCategory = queryParams.get('category') || 'Construction Labour';
+  const initialCategory = queryParams.get('category') || '';
 
   // Direct booking parameters from Worker Card click
   const [directWorker] = useState(() => {
@@ -165,7 +165,9 @@ const PostJob = () => {
   // Calculate selected sub-services cost
   const selectedSubServicesData = currentSubServices.filter(s => selectedWorks.includes(s.id));
   const laborCost = selectedSubServicesData.reduce((sum, item) => sum + item.rate, 0);
-  const totalCost = visitCharge + (laborCost * (directWorker ? 1 : Number(workersNeeded)));
+  const totalCost = selectedTrades.length > 0 
+    ? visitCharge + (laborCost * (directWorker ? 1 : Number(workersNeeded)))
+    : 0;
 
   // Sync money field with auto-calculation
   useEffect(() => {
@@ -222,7 +224,7 @@ const PostJob = () => {
         });
 
         setWorkersInArea(mapped);
-        setSelectedWorkerIds(mapped.map(w => w._id));
+        setSelectedWorkerIds([]);
       } catch (err) {
         console.error('Error fetching workers matching specialty:', err);
       } finally {
@@ -416,6 +418,7 @@ const PostJob = () => {
                         type="button"
                         onClick={() => {
                           setSelectedIndustry(industry);
+                          setSelections({});
                         }}
                         className={`text-start d-flex align-items-center gap-3 px-3 py-2 rounded-3 border-0 transition ${selectedIndustry === industry ? 'text-white' : 'text-dark'}`}
                         style={{
@@ -585,6 +588,86 @@ const PostJob = () => {
                   )}
                 </div>
               </div>
+
+              {/* 4. Select & Invite Workers Section */}
+              {!directWorker && workersInArea.length > 0 && (
+                <div className="p-4 rounded-4 shadow-sm mt-4 animate-fade-in" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h5 className="fw-800 mb-0" style={{ color: '#0a2540', fontSize: '1.05rem', fontWeight: 800 }}>
+                      <span className="me-2">👷‍♂️</span> 4. Select &amp; Invite Workers
+                    </h5>
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary px-2 py-1 fw-bold"
+                        style={{ fontSize: '0.72rem', borderRadius: '8px' }}
+                        onClick={() => setSelectedWorkerIds(workersInArea.map(w => w._id))}
+                      >
+                        Select All
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary px-2 py-1 fw-bold"
+                        style={{ fontSize: '0.72rem', borderRadius: '8px' }}
+                        onClick={() => setSelectedWorkerIds([])}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-muted small mb-3">
+                    We found <strong>{workersInArea.length} matching workers</strong> in your area. Check the workers you want to invite to bid on this request:
+                  </p>
+
+                  <div className="d-flex flex-column gap-2" style={{ maxHeight: '250px', overflowY: 'auto', paddingRight: '5px' }}>
+                    {workersInArea.map((worker) => {
+                      const isSelected = selectedWorkerIds.includes(worker._id);
+                      return (
+                        <div
+                          key={worker._id}
+                          onClick={() => {
+                            setSelectedWorkerIds(prev => 
+                              prev.includes(worker._id)
+                                ? prev.filter(id => id !== worker._id)
+                                : [...prev, worker._id]
+                            );
+                          }}
+                          className="p-3 rounded-3 border d-flex align-items-center justify-content-between transition"
+                          style={{
+                            cursor: 'pointer',
+                            border: isSelected ? '1.8px solid #0d6efd' : '1px solid #dee2e6',
+                            background: isSelected ? 'rgba(13,110,253,0.02)' : '#fff',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div className="d-flex align-items-center gap-3">
+                            <input
+                              type="checkbox"
+                              className="form-check-input mb-0"
+                              checked={isSelected}
+                              onChange={() => {}} // handled by parent div click
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            <img
+                              src={worker.avatar}
+                              alt={worker.fullName}
+                              className="rounded-circle"
+                              style={{ width: '40px', height: '40px', objectFit: 'cover', border: '1px solid #dee2e6' }}
+                            />
+                            <div>
+                              <span className="fw-bold d-block text-dark" style={{ fontSize: '0.85rem', fontWeight: 800 }}>{worker.fullName}</span>
+                              <span className="text-muted small" style={{ fontSize: '0.72rem' }}>
+                                {worker.occupation} · ⭐ <span className="text-warning fw-bold">{worker.rating}</span> ({worker.distanceText})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* RIGHT: Live Bill & Breakdown */}

@@ -298,7 +298,8 @@ router.put('/:id/status', protect, async (req, res) => {
       job.status = status;
     }
 
-    // Auto-assign worker if accepted and none is assigned (e.g. mock panel)
+    // Auto-assign worker deactivated to ensure client manual selection only
+    /*
     if (status === 'Accepted' && !job.hiredWorker) {
       const matchingWorker = await User.findOne({
         role: 'worker',
@@ -314,6 +315,7 @@ router.put('/:id/status', protect, async (req, res) => {
       }
       job.bidders = [];
     }
+    */
 
     const updatedJob = await job.save();
 

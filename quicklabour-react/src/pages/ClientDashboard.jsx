@@ -389,9 +389,57 @@ const ClientDashboard = () => {
                               </div>
                             </div>
                           ) : (
-                            <div className="mt-3 bg-light p-3 rounded-16 border d-flex align-items-center gap-3">
-                              <div className="spinner-grow spinner-grow-sm text-warning" role="status"></div>
-                              <span className="text-muted small fw-bold">🔍 Matching and routing this request to nearby {job.title.split(' ')[0]}s...</span>
+                            <div className="w-100">
+                              <div className="mt-3 bg-light p-3 rounded-16 border d-flex align-items-center gap-3">
+                                <div className="spinner-grow spinner-grow-sm text-warning" role="status"></div>
+                                <span className="text-muted small fw-bold">🔍 Matching and routing this request to nearby {job.title.split(' ')[0]}s...</span>
+                              </div>
+
+                              {job.bidders && job.bidders.length > 0 ? (
+                                <div className="mt-4">
+                                  <h6 className="fw-800 text-primary mb-3" style={{ fontSize: '0.9rem', fontWeight: 800 }}>
+                                    <i className="bi bi-people-fill me-2"></i>Available Proposals &amp; Bids ({job.bidders.length})
+                                  </h6>
+                                  <div className="d-flex flex-column gap-3">
+                                    {job.bidders.map((bidder) => (
+                                      <div
+                                        key={bidder.id}
+                                        className="p-3 rounded-16 border bg-white shadow-sm d-flex justify-content-between align-items-center flex-wrap gap-3"
+                                        style={{ borderLeft: '4px solid #0d6efd', transition: 'all 0.2s' }}
+                                      >
+                                        <div className="d-flex align-items-center gap-3">
+                                          <img
+                                            src={bidder.avatar}
+                                            alt={bidder.name}
+                                            className="bidder-profile-img rounded-circle"
+                                            style={{ width: '48px', height: '48px', objectFit: 'cover', border: '2px solid #e2e8f0' }}
+                                          />
+                                          <div>
+                                            <h6 className="mb-0 fw-800 text-dark" style={{ fontSize: '0.92rem', fontWeight: 800 }}>{bidder.name}</h6>
+                                            <p className="text-muted small mb-0 mt-0.5" style={{ fontSize: '0.78rem' }}>
+                                              {bidder.role} · ⭐ <span className="text-warning fw-bold">{bidder.rating}</span> ({bidder.jobs} jobs completed)
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="text-end d-flex align-items-center gap-3 ms-auto">
+                                          <div className="fw-800 text-success" style={{ fontSize: '1.05rem', fontWeight: 800 }}>{bidder.rate}</div>
+                                          <button
+                                            className="btn btn-primary px-3 py-1.5 fw-bold rounded-12 shadow-sm border-0 transition text-white d-flex align-items-center justify-content-center"
+                                            style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', fontSize: '0.82rem', height: '34px', cursor: 'pointer' }}
+                                            onClick={() => handleApproveHire(job.id, bidder.id, bidder.name, bidder.rate)}
+                                          >
+                                            🤝 Hire Worker
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-3 bg-light p-3 rounded-16 border text-center text-muted small">
+                                  <i className="bi bi-clock-history me-1"></i> Waiting for matching workers to place bids on your request...
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
