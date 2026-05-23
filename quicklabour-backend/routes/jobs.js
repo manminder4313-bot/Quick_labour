@@ -25,7 +25,7 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 // @route   POST /api/jobs
 // @access  Private (Client only)
 router.post('/', protect, async (req, res) => {
-  const { name, location, fullAddress, latitude, longitude, repair, money, workerId } = req.body;
+  const { name, location, fullAddress, latitude, longitude, repair, money, workerId, workersNeeded, invitedWorkers } = req.body;
 
   try {
     const title = `${repair} Request at ${location}`;
@@ -43,6 +43,8 @@ router.post('/', protect, async (req, res) => {
       money: Number(money),
       status: isDirectHire ? 'Accepted' : 'Waiting...',
       hiredWorker: isDirectHire ? workerId : null,
+      workersNeeded: Number(workersNeeded) || 1,
+      invitedWorkers: invitedWorkers || [],
     });
 
     if (isDirectHire) {
@@ -54,6 +56,12 @@ router.post('/', protect, async (req, res) => {
         worker.jobsCompleted = (worker.jobsCompleted || 0) + 1;
         await worker.save();
       }
+    } else if (invitedWorkers && invitedWorkers.length > 0) {
+      const selectedWorkersList = await User.find({ _id: { $in: invitedWorkers } });
+      job.bidders = selectedWorkersList.map((w) => ({
+        worker: w._id,
+        rate: `₹${Math.round((w.rating || 4.8) * 150)}/day`,
+      }));
     } else {
       // To make the client dashboard super dynamic, let's look for workers of this specialty
       // in the database and pre-populate bidders if any exist. If not, we generate dynamic mock ones!

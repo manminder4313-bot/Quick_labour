@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { api, LABOUR_INDUSTRIES } from '../utils/api';
 
 
 const Login = () => {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [activeTab, setActiveTab] = useState('client'); // 'client' or 'worker'
+  const [activeTab, setActiveTab] = useState('client'); // 'client', 'worker', or 'industry'
+
+  // Industry-specific states
+  const [companyName, setCompanyName] = useState('');
+  const [industryType, setIndustryType] = useState('');
+  const [companySize, setCompanySize] = useState('');
+  const [gstNumber, setGstNumber] = useState('');
   
   // Login Form States
   const [email, setEmail] = useState('');
@@ -144,30 +150,37 @@ const Login = () => {
           idFileBase64 = await convertToBase64(idFile);
         }
 
+        const isIndustry = activeTab === 'industry';
         const userData = {
-          fullName,
-          email: `${phone.replace(/[^0-9]/g, '')}@quicklabour.com`, // Create standard unique email from phone
+          fullName: isIndustry ? companyName : fullName,
+          email: `${phone.replace(/[^0-9]/g, '')}@quicklabour.com`,
           password: signUpPassword,
           phone,
           address,
           latitude,
           longitude,
-          role: activeTab,
-          occupation: activeTab === 'worker' ? occupation : '',
-          avatar: avatarBase64 || undefined,
+          role: isIndustry ? 'client' : activeTab,
+          occupation: isIndustry
+            ? `Industry: ${companyName} (${industryType})`
+            : activeTab === 'worker' ? occupation : '',
+          avatar: avatarBase64 || (isIndustry
+            ? `https://ui-avatars.com/api/?name=${encodeURIComponent(companyName)}&background=0a2540&color=f5a623&size=150&bold=true`
+            : undefined),
           idType,
           idFile: idFileBase64,
         };
 
         const res = await api.register(userData);
 
-        setSuccessMessage(`🎉 OTP Verified & Account Created Successfully! Your ${activeTab === 'client' ? 'Client' : 'Worker'} profile is now active. Redirecting to your dashboard...`);
+        setSuccessMessage(`🎉 OTP Verified & Account Created Successfully! Redirecting to your dashboard...`);
         setOtpNotification('');
         setShowOtp(false);
 
         // Redirect after 2 seconds
         setTimeout(() => {
-          if (res.role === 'client') {
+          if (activeTab === 'industry') {
+            navigate('/industry-dashboard');
+          } else if (res.role === 'client') {
             navigate('/client-dashboard');
           } else {
             navigate('/worker-dashboard');
@@ -342,33 +355,80 @@ const Login = () => {
                 </div>
               )}
 
-              {/* Toggle Tabs (Switch Client vs Worker Role) */}
-              <div className="login-tab-container">
+              {/* Toggle Tabs */}
+              <div className="login-tab-container" style={{ display: 'flex', flexWrap: isSignUp ? 'wrap' : 'nowrap', gap: isSignUp ? '4px' : 0 }}>
                 <button
                   className={`login-tab-btn ${activeTab === 'client' ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveTab('client');
-                    setErrorMessage('');
-                  }}
+                  style={{ flex: 1, fontSize: isSignUp ? '0.8rem' : undefined }}
+                  onClick={() => { setActiveTab('client'); setErrorMessage(''); }}
                 >
-                  <i className="bi bi-person-fill me-2"></i>{isSignUp ? 'Register Client' : 'Client Portal'}
+                  <i className="bi bi-person-fill me-1"></i>{isSignUp ? 'Register Client' : 'Client Portal'}
                 </button>
                 <button
                   className={`login-tab-btn ${activeTab === 'worker' ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveTab('worker');
-                    setErrorMessage('');
-                  }}
+                  style={{ flex: 1, fontSize: isSignUp ? '0.8rem' : undefined }}
+                  onClick={() => { setActiveTab('worker'); setErrorMessage(''); }}
                 >
-                  <i className="bi bi-tools me-2"></i>{isSignUp ? 'Register Worker' : 'Worker Portal'}
+                  <i className="bi bi-tools me-1"></i>{isSignUp ? 'Register Worker' : 'Worker Portal'}
                 </button>
+                {isSignUp && (
+                  <button
+                    className={`login-tab-btn ${activeTab === 'industry' ? 'active' : ''}`}
+                    style={{ flex: 1, fontSize: '0.8rem', background: activeTab === 'industry' ? 'linear-gradient(135deg,#0a2540,#0d6efd)' : undefined }}
+                    onClick={() => { setActiveTab('industry'); setErrorMessage(''); }}
+                  >
+                    <i className="bi bi-building me-1"></i>Register Industry
+                  </button>
+                )}
               </div>
 
               {isSignUp ? (
                 /* ──────────────── REGISTRATION FORM ──────────────── */
                 <form onSubmit={handleSignUp}>
                   <div className="row g-3">
-                    {/* Profile Photo Upload */}
+
+                    {/* Industry — Coming Soon Panel */}
+                    {activeTab === 'industry' && (
+                      <div className="col-12">
+                        <div style={{ textAlign: 'center', padding: '36px 24px', background: 'linear-gradient(135deg, #0a2540 0%, #1a3a5c 100%)', borderRadius: 20, position: 'relative', overflow: 'hidden' }}>
+                          {/* Background glow */}
+                          <div style={{ position: 'absolute', inset: 0, background: 'url(https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&q=60) center/cover', opacity: 0.06 }} />
+
+                          <div style={{ position: 'relative' }}>
+                            {/* Icon */}
+                            <div style={{ width: 72, height: 72, background: 'rgba(245,166,35,0.15)', border: '2px solid rgba(245,166,35,0.35)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', margin: '0 auto 16px' }}>🏭</div>
+
+                            {/* Coming Soon badge */}
+                            <span style={{ background: 'rgba(245,166,35,0.2)', border: '1px solid rgba(245,166,35,0.5)', color: '#f5a623', borderRadius: 50, padding: '4px 16px', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase' }}>Coming Soon</span>
+
+                            <h5 style={{ color: '#fff', fontWeight: 800, marginTop: 16, marginBottom: 8 }}>Industry Account Registration</h5>
+                            <p style={{ color: '#94a3b8', fontSize: '0.85rem', lineHeight: 1.7, marginBottom: 24, maxWidth: 340, margin: '0 auto 24px' }}>
+                              We're building a powerful onboarding portal for factories, construction firms, and industries to register and manage large workforces seamlessly.
+                            </p>
+
+                            {/* Features preview */}
+                            <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 28 }}>
+                              {['Bulk Hiring', 'GST Verified', 'Dedicated Manager', 'Priority Workers'].map(f => (
+                                <span key={f} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#cbd5e1', borderRadius: 50, padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  ✦ {f}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* CTA to Industry Dashboard */}
+                            <Link
+                              to="/industry-dashboard"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#f5a623', color: '#0a2540', borderRadius: 50, padding: '12px 28px', fontWeight: 800, fontSize: '0.9rem', textDecoration: 'none', boxShadow: '0 8px 24px rgba(245,166,35,0.35)' }}
+                            >
+                              <i className="bi bi-building"></i> Explore Industry Dashboard
+                            </Link>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Profile Photo Upload — shown for client/worker only */}
+                    {activeTab !== 'industry' && (
                     <div className="col-12 text-center mb-2">
                       {photoPreview ? (
                         <img src={photoPreview} alt="Preview" className="image-preview-circle border border-primary border-3" />
@@ -384,13 +444,15 @@ const Login = () => {
                           accept="image/*" 
                           className="position-absolute top-0 start-0 opacity-0 w-100 h-100" 
                           onChange={handlePhotoChange}
-                          required
+                          required={activeTab !== 'industry'}
                         />
                       </label>
                       <div className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>Add a clear face photo for your profile</div>
                     </div>
+                    )}
 
-                    {/* Name */}
+                    {/* Name — hidden for industry (uses company name) */}
+                    {activeTab !== 'industry' && (
                     <div className="col-md-6">
                       <div className="form-input-group mb-0">
                         <label>Full Name</label>
@@ -399,10 +461,11 @@ const Login = () => {
                           placeholder="e.g. Priya Sharma"
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
-                          required
+                          required={activeTab !== 'industry'}
                         />
                       </div>
                     </div>
+                    )}
 
                     {/* Contact Phone */}
                     <div className="col-md-6">
@@ -417,6 +480,9 @@ const Login = () => {
                         />
                       </div>
                     </div>
+
+                    {/* Address, Occupation, ID, Password — hidden when industry tab active */}
+                    {activeTab !== 'industry' && (<>
 
                     {/* Address */}
                     <div className="col-12">
@@ -452,13 +518,11 @@ const Login = () => {
                       </div>
                     </div>
 
-                    {/* Occupation / Skills (Worker Only) — Two-step visual picker */}
+                    {/* Occupation / Skills (Worker Only) */}
                     {activeTab === 'worker' && (
                       <div className="col-12">
                         <div className="form-input-group mb-0">
                           <label>Primary Occupation / Trade</label>
-
-                          {/* Step 1 — Industry selector */}
                           <div style={{ marginBottom: 10 }}>
                             <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
                               Step 1 — Select Industry
@@ -468,65 +532,31 @@ const Login = () => {
                                 <button
                                   key={industry}
                                   type="button"
-                                  onClick={() => {
-                                    setSelectedIndustry(industry);
-                                    setOccupation(info.specialties[0].name);
-                                  }}
-                                  style={{
-                                    padding: '5px 12px',
-                                    borderRadius: 20,
-                                    border: selectedIndustry === industry ? 'none' : '1.5px solid #e2e8f0',
-                                    background: selectedIndustry === industry ? 'linear-gradient(135deg,#0d6efd,#0b5ed7)' : '#f8fafc',
-                                    color: selectedIndustry === industry ? '#fff' : '#475569',
-                                    fontWeight: selectedIndustry === industry ? 700 : 500,
-                                    fontSize: '0.78rem',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.18s',
-                                    whiteSpace: 'nowrap',
-                                  }}
+                                  onClick={() => { setSelectedIndustry(industry); setOccupation(info.specialties[0].name); }}
+                                  style={{ padding: '5px 12px', borderRadius: 20, border: selectedIndustry === industry ? 'none' : '1.5px solid #e2e8f0', background: selectedIndustry === industry ? 'linear-gradient(135deg,#0d6efd,#0b5ed7)' : '#f8fafc', color: selectedIndustry === industry ? '#fff' : '#475569', fontWeight: selectedIndustry === industry ? 700 : 500, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.18s', whiteSpace: 'nowrap' }}
                                 >
                                   {info.icon} {industry}
                                 </button>
                               ))}
                             </div>
                           </div>
-
-                          {/* Step 2 — Specialty pills */}
                           {selectedIndustry && (
                             <div>
-                              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                                Step 2 — Select Your Trade
-                              </div>
+                              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Step 2 — Select Your Trade</div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                 {LABOUR_INDUSTRIES[selectedIndustry].specialties.map((spec) => (
-                                  <button
-                                    key={spec.name}
-                                    type="button"
-                                    onClick={() => setOccupation(spec.name)}
-                                    style={{
-                                      padding: '7px 14px',
-                                      borderRadius: 10,
-                                      border: occupation === spec.name ? 'none' : '1.5px solid #e2e8f0',
-                                      background: occupation === spec.name ? 'linear-gradient(135deg,#1db97a,#16a34a)' : '#f8fafc',
-                                      color: occupation === spec.name ? '#fff' : '#334155',
-                                      fontWeight: occupation === spec.name ? 700 : 500,
-                                      fontSize: '0.82rem',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.18s',
-                                    }}
+                                  <button key={spec.name} type="button" onClick={() => setOccupation(spec.name)}
+                                    style={{ padding: '7px 14px', borderRadius: 10, border: occupation === spec.name ? 'none' : '1.5px solid #e2e8f0', background: occupation === spec.name ? 'linear-gradient(135deg,#1db97a,#16a34a)' : '#f8fafc', color: occupation === spec.name ? '#fff' : '#334155', fontWeight: occupation === spec.name ? 700 : 500, fontSize: '0.82rem', cursor: 'pointer', transition: 'all 0.18s' }}
                                   >
                                     {occupation === spec.name && '✓ '}{spec.name}
                                   </button>
                                 ))}
                               </div>
-                              {/* Selected summary */}
                               <div style={{ marginTop: 10, padding: '8px 14px', background: '#f0fdf4', borderRadius: 10, border: '1.5px solid #bbf7d0', fontSize: '0.82rem', color: '#15803d', fontWeight: 600 }}>
                                 ✅ Selected: <strong>{occupation}</strong> &nbsp;·&nbsp; ₹{LABOUR_INDUSTRIES[selectedIndustry]?.specialties.find(s => s.name === occupation)?.baseRate || '—'}/day base rate
                               </div>
                             </div>
                           )}
-
-                          {/* Hidden real input for form validation */}
                           <input type="hidden" value={occupation} required />
                         </div>
                       </div>
@@ -536,12 +566,7 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0">
                         <label>Select ID Proof Document</label>
-                        <select 
-                          className="form-select border-1.5 p-2 rounded-12 text-muted" 
-                          style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }}
-                          value={idType}
-                          onChange={(e) => setIdType(e.target.value)}
-                        >
+                        <select className="form-select border-1.5 p-2 rounded-12 text-muted" style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }} value={idType} onChange={(e) => setIdType(e.target.value)}>
                           <option value="Aadhaar">Aadhaar Card (UIDAI)</option>
                           <option value="PAN">PAN Card (Income Tax)</option>
                         </select>
@@ -556,13 +581,7 @@ const Login = () => {
                           <span className="small text-muted text-truncate d-block fw-700">
                             {idFileName ? `✔️ ${idFileName.substring(0, 18)}...` : '📎 Upload ID PDF/Image'}
                           </span>
-                          <input 
-                            type="file" 
-                            accept="image/*,application/pdf" 
-                            className="file-upload-input" 
-                            onChange={handleIdFileChange}
-                            required
-                          />
+                          <input type="file" accept="image/*,application/pdf" className="file-upload-input" onChange={handleIdFileChange} required />
                         </div>
                       </div>
                     </div>
@@ -571,25 +590,11 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0 position-relative">
                         <label>Password</label>
-                        <input
-                          type={showSignUpPassword ? "text" : "password"}
-                          placeholder="At least 8 chars with uppercase, lowercase, number & symbol..."
-                          value={signUpPassword}
-                          onChange={(e) => setSignUpPassword(e.target.value)}
-                          required
-                          style={{ paddingRight: '45px' }}
-                        />
-                        <button
-                          type="button"
-                          className="btn position-absolute border-0 bg-transparent"
-                          style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }}
-                          onClick={() => setShowSignUpPassword(!showSignUpPassword)}
-                        >
+                        <input type={showSignUpPassword ? "text" : "password"} placeholder="At least 8 chars with uppercase, lowercase, number & symbol..." value={signUpPassword} onChange={(e) => setSignUpPassword(e.target.value)} required style={{ paddingRight: '45px' }} />
+                        <button type="button" className="btn position-absolute border-0 bg-transparent" style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }} onClick={() => setShowSignUpPassword(!showSignUpPassword)}>
                           <i className={`bi ${showSignUpPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
                         </button>
-                        <div className="text-muted small mt-1" style={{ fontSize: '0.72rem', lineHeight: '1.2' }}>
-                          Must be at least 8 characters, and contain uppercase, lowercase, numbers, and symbols.
-                        </div>
+                        <div className="text-muted small mt-1" style={{ fontSize: '0.72rem', lineHeight: '1.2' }}>Must be at least 8 characters, and contain uppercase, lowercase, numbers, and symbols.</div>
                       </div>
                     </div>
 
@@ -597,29 +602,21 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0 position-relative">
                         <label>Confirm Password</label>
-                        <input
-                          type={showConfirmPassword ? "text" : "password"}
-                          placeholder="Repeat password..."
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          required
-                          style={{ paddingRight: '45px' }}
-                        />
-                        <button
-                          type="button"
-                          className="btn position-absolute border-0 bg-transparent"
-                          style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }}
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        >
+                        <input type={showConfirmPassword ? "text" : "password"} placeholder="Repeat password..." value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required style={{ paddingRight: '45px' }} />
+                        <button type="button" className="btn position-absolute border-0 bg-transparent" style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
                           <i className={`bi ${showConfirmPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
                         </button>
                       </div>
                     </div>
+
+                    </>)}
                   </div>
 
-                  <button type="submit" className="login-submit-btn mt-4">
-                    Register as {activeTab === 'client' ? 'Client' : 'Worker'} Partner
-                  </button>
+                  {activeTab !== 'industry' && (
+                    <button type="submit" className="login-submit-btn mt-4">
+                      {activeTab === 'client' ? '🧑 Register as Client' : '🔧 Register as Worker'}
+                    </button>
+                  )}
                 </form>
               ) : (
                 /* ──────────────── SIGN IN FORM ──────────────── */

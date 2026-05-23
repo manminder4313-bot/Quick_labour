@@ -166,6 +166,50 @@ router.get('/profile', protect, async (req, res) => {
   }
 });
 
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+router.put('/profile', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (user) {
+      user.fullName = req.body.fullName || user.fullName;
+      user.phone = req.body.phone || user.phone;
+      user.address = req.body.address || user.address;
+      user.avatar = req.body.avatar || user.avatar;
+      
+      if (user.role === 'worker' && req.body.occupation) {
+        user.occupation = req.body.occupation;
+        user.skills = [req.body.occupation];
+      }
+
+      const updatedUser = await user.save();
+
+      res.json({
+        _id: updatedUser._id,
+        fullName: updatedUser.fullName,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        address: updatedUser.address,
+        role: updatedUser.role,
+        occupation: updatedUser.occupation,
+        avatar: updatedUser.avatar,
+        latitude: updatedUser.latitude,
+        longitude: updatedUser.longitude,
+        isOnline: updatedUser.isOnline,
+        rating: updatedUser.rating,
+        jobsCompleted: updatedUser.jobsCompleted,
+        skills: updatedUser.skills
+      });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // @desc    Toggle Worker Online Status
 // @route   PUT /api/auth/status
 // @access  Private

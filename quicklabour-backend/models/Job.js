@@ -50,6 +50,16 @@ const jobSchema = new mongoose.Schema(
       ref: 'Labour',
       default: null,
     },
+    workersNeeded: {
+      type: Number,
+      default: 1,
+    },
+    invitedWorkers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Labour',
+      }
+    ],
     bidders: [
       {
         worker: {

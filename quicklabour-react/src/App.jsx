@@ -13,6 +13,8 @@ import Reviews from './pages/Reviews';
 import ClientDashboard from './pages/ClientDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import IndustryDashboard from './pages/IndustryDashboard';
+import IndustryRegister from './pages/IndustryRegister';
 import './App.css';
 
 function App() {
@@ -33,6 +35,8 @@ function App() {
             <Route path="/client-dashboard" element={<ClientDashboard />} />
             <Route path="/worker-dashboard" element={<WorkerDashboard />} />
             <Route path="/admin-dashboard" element={<AdminDashboard />} />
+            <Route path="/industry-dashboard" element={<IndustryDashboard />} />
+            <Route path="/industry-register" element={<IndustryRegister />} />
           </Routes>
         </main>
         <Footer />

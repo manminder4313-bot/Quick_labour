@@ -104,6 +104,13 @@ const PostJob = () => {
   const [section, setSection] = useState('form');     // form | confirm | submitted
   const [dbJob, setDbJob] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [selections, setSelections] = useState(() => {
+    return initialCategory ? { [initialCategory]: 1 } : {};
+  });
+  const [workersNeeded, setWorkersNeeded] = useState(1);
+  const [workersInArea, setWorkersInArea] = useState([]);
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
+  const [loadingWorkers, setLoadingWorkers] = useState(false);
 
   // Derive initial industry from initialCategory
   const getInitialIndustry = () => {
@@ -114,30 +121,119 @@ const PostJob = () => {
   };
   const [selectedIndustry, setSelectedIndustry] = useState(getInitialIndustry);
 
+  // Sync selections with repair description and workersNeeded count
+  useEffect(() => {
+    const sum = Object.values(selections).reduce((a, b) => a + b, 0);
+    setWorkersNeeded(sum > 0 ? sum : 1);
+
+    const description = Object.entries(selections)
+      .map(([trade, qty]) => `${qty} ${trade}`)
+      .join(', ');
+    
+    setFormData(prev => ({
+      ...prev,
+      repair: description || initialCategory
+    }));
+  }, [selections, initialCategory]);
+
   // Reset and auto-select first sub-service when repair specialty changes
   useEffect(() => {
-    const defaultServices = getSubServices(formData.repair);
-    if (defaultServices.length > 0) {
-      setSelectedWorks([defaultServices[0].id]);
+    const selectedTrades = Object.keys(selections);
+    const allServices = selectedTrades.flatMap(trade => getSubServices(trade));
+    if (allServices.length > 0) {
+      setSelectedWorks(prev => {
+        const valid = prev.filter(id => allServices.some(s => s.id === id));
+        if (valid.length === 0) return [allServices[0].id];
+        return valid;
+      });
     } else {
       setSelectedWorks([]);
     }
-  }, [formData.repair]);
+  }, [selections]);
 
   // Pricing calculations
-  const pricing = getServicePricing(formData.repair);
-  const visitCharge = pricing.visitCharge;
-  const currentSubServices = getSubServices(formData.repair);
+  const selectedTrades = Object.keys(selections);
+  const visitCharge = selectedTrades.length > 0 
+    ? Math.max(...selectedTrades.map(t => getServicePricing(t).visitCharge)) 
+    : 80;
+  const currentSubServices = selectedTrades.length > 0 
+    ? selectedTrades.flatMap(trade => getSubServices(trade))
+    : getSubServices(formData.repair);
+  
+  const pricing = getServicePricing(selectedTrades[0] || formData.repair);
   
   // Calculate selected sub-services cost
   const selectedSubServicesData = currentSubServices.filter(s => selectedWorks.includes(s.id));
   const laborCost = selectedSubServicesData.reduce((sum, item) => sum + item.rate, 0);
-  const totalCost = visitCharge + laborCost;
+  const totalCost = visitCharge + (laborCost * (directWorker ? 1 : Number(workersNeeded)));
 
   // Sync money field with auto-calculation
   useEffect(() => {
     setFormData(prev => ({ ...prev, money: totalCost }));
   }, [totalCost]);
+
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+    const R = 6371; // Radius of Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  useEffect(() => {
+    const fetchMatchingWorkers = async () => {
+      setLoadingWorkers(true);
+      try {
+        const all = await api.getWorkers();
+        const activeTrades = Object.keys(selections).map(t => t.toLowerCase());
+        
+        // Filter by occupation and matching role
+        const matching = (all || []).filter(w => 
+          w.role === 'worker' &&
+          w.occupation &&
+          (activeTrades.length === 0 || activeTrades.some(trade => w.occupation.toLowerCase().includes(trade)))
+        );
+
+        // Map and compute real distance
+        const mapped = matching.map(w => {
+          const dist = calculateDistance(
+            formData.latitude,
+            formData.longitude,
+            w.latitude,
+            w.longitude
+          );
+          return {
+            ...w,
+            distance: dist,
+            distanceText: dist !== null ? `${dist.toFixed(1)} km away` : 'Location not shared'
+          };
+        });
+
+        // Sort by distance (closest first)
+        mapped.sort((a, b) => {
+          if (a.distance === null) return 1;
+          if (b.distance === null) return -1;
+          return a.distance - b.distance;
+        });
+
+        setWorkersInArea(mapped);
+        setSelectedWorkerIds(mapped.map(w => w._id));
+      } catch (err) {
+        console.error('Error fetching workers matching specialty:', err);
+      } finally {
+        setLoadingWorkers(false);
+      }
+    };
+
+    if (Object.keys(selections).length > 0) {
+      fetchMatchingWorkers();
+    }
+  }, [selections, formData.latitude, formData.longitude]);
 
   useEffect(() => {
     if (!sessionStorage.getItem('userRole')) navigate('/login');
@@ -190,7 +286,9 @@ const PostJob = () => {
       const payload = {
         ...formData,
         repair: selectedTaskNames ? `${formData.repair} (${selectedTaskNames})` : formData.repair,
-        money: totalCost
+        money: totalCost,
+        workersNeeded: directWorker ? 1 : Number(workersNeeded),
+        invitedWorkers: directWorker ? [] : selectedWorkerIds
       };
       if (directWorker) {
         payload.workerId = directWorker.id;
@@ -257,7 +355,7 @@ const PostJob = () => {
           {/* 1. TOP BOX: Client & Location Details */}
           <div className="p-4 rounded-4 shadow-sm mb-4" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
             <h5 className="fw-800 mb-3" style={{ color: '#0a2540', fontSize: '1.05rem' }}>
-              <span className="me-2">👤</span> Client &amp; Location Details
+              <span className="me-2">👤</span> 1. Client &amp; Location Details
             </h5>
             
             <div className="row g-3">
@@ -302,23 +400,22 @@ const PostJob = () => {
             </div>
           </div>
 
-          {/* 2. MIDDLE BOXES: Side-by-Side Category and Specialty Selectors */}
+          {/* 2. MIDDLE BOXES: Select Industry & Occupation */}
           {!directWorker && (
             <div className="row g-3 mb-4">
               {/* Box 1: Select Industry */}
-              <div className="col-md-6">
+              <div className="col-md-5">
                 <div className="p-4 rounded-4 shadow-sm h-100" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
                   <h5 className="fw-800 mb-3" style={{ color: '#0a2540', fontSize: '1.02rem' }}>
-                    <span className="me-2">🏢</span> 1. Select Industry
+                    <span className="me-2">🏢</span> 2.1. Select Industry
                   </h5>
-                  <div className="d-flex flex-column gap-2" style={{ maxHeight: '280px', overflowY: 'auto', paddingRight: '5px' }}>
+                  <div className="d-flex flex-column gap-2" style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '5px' }}>
                     {Object.entries(LABOUR_INDUSTRIES).map(([industry, info]) => (
                       <button
                         key={industry}
                         type="button"
                         onClick={() => {
                           setSelectedIndustry(industry);
-                          setFormData(prev => ({ ...prev, repair: info.specialties[0].name }));
                         }}
                         className={`text-start d-flex align-items-center gap-3 px-3 py-2 rounded-3 border-0 transition ${selectedIndustry === industry ? 'text-white' : 'text-dark'}`}
                         style={{
@@ -339,34 +436,72 @@ const PostJob = () => {
                 </div>
               </div>
 
-              {/* Box 2: Type of Occupation */}
-              <div className="col-md-6">
+              {/* Box 2: Specialties list with custom quantities */}
+              <div className="col-md-7">
                 <div className="p-4 rounded-4 shadow-sm h-100" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
-                  <h5 className="fw-800 mb-3" style={{ color: '#0a2540', fontSize: '1.02rem' }}>
-                    <span className="me-2">👷</span> 2. Type of Occupation
+                  <h5 className="fw-800 mb-1" style={{ color: '#0a2540', fontSize: '1.02rem' }}>
+                    <span className="me-2">👷</span> 2.2. Select Occupations &amp; Worker Quantities
                   </h5>
+                  <p className="text-muted small mb-3">Set the number of workers needed for each trade below.</p>
+                  
                   {selectedIndustry ? (
-                    <div className="d-flex flex-wrap gap-2" style={{ maxHeight: '280px', overflowY: 'auto', contentVisibility: 'auto' }}>
-                      {LABOUR_INDUSTRIES[selectedIndustry].specialties.map((spec) => (
-                        <button
-                          key={spec.name}
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, repair: spec.name }))}
-                          className="d-flex align-items-center gap-2 px-3 py-2 rounded-3 text-start"
-                          style={{
-                            border: formData.repair === spec.name ? 'none' : '1px solid #e0e7ff',
-                            background: formData.repair === spec.name ? 'linear-gradient(135deg,#0d6efd,#6610f2)' : '#f8f9ff',
-                            color: formData.repair === spec.name ? '#fff' : '#495057',
-                            fontWeight: formData.repair === spec.name ? 700 : 500,
-                            fontSize: '0.8rem',
-                            cursor: 'pointer',
-                            flex: '1 1 45%',
-                            transition: 'all 0.18s',
-                          }}
-                        >
-                          {formData.repair === spec.name ? '✓ ' : '🔧 '} {spec.name}
-                        </button>
-                      ))}
+                    <div className="d-flex flex-column gap-2" style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '5px' }}>
+                      {LABOUR_INDUSTRIES[selectedIndustry].specialties.map((spec) => {
+                        const count = selections[spec.name] || 0;
+                        return (
+                          <div
+                            key={spec.name}
+                            className="d-flex align-items-center justify-content-between p-2 px-3 rounded-3 border transition"
+                            style={{
+                              border: count > 0 ? '1.8px solid #0d6efd' : '1px solid #e2e8f0',
+                              background: count > 0 ? 'rgba(13,110,253,0.03)' : '#fff',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <div className="min-w-0 flex-grow-1 me-2">
+                              <div className="fw-800 text-dark small" style={{ fontSize: '0.86rem' }}>
+                                {count > 0 ? '✅ ' : '🔧 '} {spec.name}
+                              </div>
+                              <div className="text-muted small" style={{ fontSize: '0.72rem' }}>
+                                Standard: ₹{spec.baseRate}/day · {spec.desc || 'Verified support'}
+                              </div>
+                            </div>
+                            
+                            <div className="d-flex align-items-center gap-2 bg-light p-1 rounded-pill border" style={{ minWidth: 92, justifyContent: 'space-between' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelections(prev => {
+                                    const cur = prev[spec.name] || 0;
+                                    const next = Math.max(0, cur - 1);
+                                    if (next === 0) {
+                                      const { [spec.name]: _, ...rest } = prev;
+                                      return rest;
+                                    }
+                                    return { ...prev, [spec.name]: next };
+                                  });
+                                }}
+                                className="btn btn-sm btn-white d-flex align-items-center justify-content-center shadow-sm"
+                                style={{ width: 26, height: 26, borderRadius: '50%', fontWeight: '900', border: '1px solid #dee2e6', background: '#fff', fontSize: '0.9rem', cursor: 'pointer', padding: 0 }}
+                              >−</button>
+                              <span className="fw-900 text-dark" style={{ minWidth: 16, textAlign: 'center', fontSize: '0.88rem' }}>
+                                {count}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelections(prev => ({
+                                    ...prev,
+                                    [spec.name]: (prev[spec.name] || 0) + 1
+                                  }));
+                                }}
+                                className="btn btn-sm btn-white d-flex align-items-center justify-content-center shadow-sm"
+                                style={{ width: 26, height: 26, borderRadius: '50%', fontWeight: '900', border: '1px solid #dee2e6', background: '#fff', fontSize: '0.9rem', cursor: 'pointer', padding: 0 }}
+                              >+</button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-5 text-muted small">Please select an industry first.</div>
@@ -376,6 +511,8 @@ const PostJob = () => {
             </div>
           )}
 
+
+
           {/* 3. BOTTOM SECTION: Tasks Required and Hired Bill Breakdown */}
           <div className="row g-4">
             
@@ -384,7 +521,7 @@ const PostJob = () => {
               <div className="p-4 rounded-4 shadow-sm h-100" style={{ background: '#fff', border: '1.5px solid #e8ecf8' }}>
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h5 className="fw-800 mb-0" style={{ color: '#0a2540', fontSize: '1.05rem' }}>
-                    <span className="me-2">🛠️</span> Select Tasks Needed
+                    <span className="me-2">🛠️</span> 3. Select Tasks Needed
                   </h5>
                   <span className="badge bg-secondary rounded-pill small" style={{ fontSize: '0.72rem' }}>
                     {currentSubServices.length} options
@@ -393,43 +530,59 @@ const PostJob = () => {
 
                 <p className="text-muted small mb-3">Choose the specific type of works you need. Check or uncheck tasks below:</p>
 
-                <div className="d-flex flex-column gap-2">
-                  {currentSubServices.map((task) => {
-                    const isChecked = selectedWorks.includes(task.id);
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => handleToggleWork(task.id)}
-                        className="p-3 rounded-3 border d-flex align-items-center justify-content-between transition"
-                        style={{
-                          cursor: 'pointer',
-                          background: isChecked ? 'rgba(13,110,253,0.03)' : '#fcfcff',
-                          borderColor: isChecked ? '#0d6efd' : '#dee2e6',
-                          borderWidth: isChecked ? '1.8px' : '1px',
-                          boxShadow: isChecked ? '0 4px 10px rgba(13,110,253,0.04)' : 'none'
-                        }}
-                      >
-                        <div className="d-flex align-items-center gap-3">
-                          <input
-                            type="checkbox"
-                            className="form-check-input mb-0"
-                            checked={isChecked}
-                            onChange={() => {}} // handled by parent div click
-                            style={{ width: '17px', height: '17px', cursor: 'pointer' }}
-                          />
-                          <div>
-                            <span className="fw-bold d-block text-dark" style={{ fontSize: '0.85rem' }}>{task.name}</span>
-                            <span className="text-muted small" style={{ fontSize: '0.72rem' }}>Standard service call item</span>
+                <div className="d-flex flex-column gap-3">
+                  {selectedTrades.length === 0 ? (
+                    <div className="text-center py-4 text-muted small">Please select occupations first in Step 2.2 to view tasks.</div>
+                  ) : (
+                    selectedTrades.map((trade) => {
+                      const tradeTasks = getSubServices(trade);
+                      return (
+                        <div key={trade} className="p-3 rounded-3 border" style={{ background: '#f8fafc', borderColor: '#e2e8f0' }}>
+                          <h6 className="fw-800 text-primary mb-3 d-flex align-items-center gap-2" style={{ fontSize: '0.88rem', fontWeight: 800 }}>
+                            <span>{getServicePricing(trade).icon}</span>
+                            <span>{trade} Tasks Needed:</span>
+                          </h6>
+                          <div className="d-flex flex-column gap-2">
+                            {tradeTasks.map((task) => {
+                              const isChecked = selectedWorks.includes(task.id);
+                              return (
+                                <div
+                                  key={task.id}
+                                  onClick={() => handleToggleWork(task.id)}
+                                  className="p-3 rounded-3 bg-white border d-flex align-items-center justify-content-between transition"
+                                  style={{
+                                    cursor: 'pointer',
+                                    border: isChecked ? '1.8px solid #0d6efd' : '1px solid #dee2e6',
+                                    boxShadow: isChecked ? '0 4px 10px rgba(13,110,253,0.04)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <div className="d-flex align-items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      className="form-check-input mb-0"
+                                      checked={isChecked}
+                                      onChange={() => {}} // handled by parent div click
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer' }}
+                                    />
+                                    <div>
+                                      <span className="fw-bold d-block text-dark" style={{ fontSize: '0.84rem' }}>{task.name}</span>
+                                      <span className="text-muted small" style={{ fontSize: '0.7rem' }}>Standard service call item</span>
+                                    </div>
+                                  </div>
+                                  <div className="text-end">
+                                    <span className="badge rounded-pill px-3 py-2 fw-800" style={{ background: isChecked ? 'linear-gradient(135deg,#0d6efd,#6610f2)' : '#e9ecef', color: isChecked ? '#fff' : '#495057', fontSize: '0.75rem' }}>
+                                      ₹{task.rate}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                        <div className="text-end">
-                          <span className="badge rounded-pill px-3 py-2 fw-800" style={{ background: isChecked ? 'linear-gradient(135deg,#0d6efd,#6610f2)' : '#e9ecef', color: isChecked ? '#fff' : '#495057', fontSize: '0.78rem' }}>
-                            ₹{task.rate}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
@@ -443,12 +596,16 @@ const PostJob = () => {
                 </div>
 
                 <div className="p-3 bg-white">
-                  {/* Selected Trade Label */}
-                  <div className="d-flex align-items-center gap-2 mb-3 p-2 rounded-3" style={{ background: '#f0f4ff' }}>
-                    <span style={{ fontSize: '1.5rem' }}>{pricing.icon}</span>
-                    <div>
-                      <div className="fw-bold small" style={{ color: '#0d6efd' }}>{formData.repair}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#888' }}>{pricing.desc}</div>
+                  {/* Selected Trades Breakdown Badge */}
+                  <div className="mb-3 p-2 rounded-3" style={{ background: '#f0f4ff' }}>
+                    <span className="fw-bold small d-block mb-1 text-primary">👥 Selected Occupations:</span>
+                    <div className="d-flex flex-column gap-1">
+                      {Object.entries(selections).map(([trade, qty]) => (
+                        <div key={trade} className="d-flex justify-content-between align-items-center bg-white p-1 px-2 rounded border" style={{ fontSize: '0.75rem' }}>
+                          <span className="fw-bold text-dark">{getServicePricing(trade).icon} {trade}</span>
+                          <span className="badge bg-primary rounded-pill fw-bold">{qty} worker{qty > 1 ? 's' : ''}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -456,7 +613,7 @@ const PostJob = () => {
                   <PriceRow label="🚗 Visiting / Inspection Fee" amount={visitCharge} />
 
                   <div className="my-2 border-top border-bottom py-2">
-                    <span className="fw-bold small text-muted d-block mb-1">Hired Tasks ({selectedSubServicesData.length}):</span>
+                    <span className="fw-bold small text-muted d-block mb-1">Standard Tasks ({selectedSubServicesData.length}):</span>
                     {selectedSubServicesData.map(s => (
                       <div key={s.id} className="d-flex justify-content-between text-muted small py-1" style={{ fontSize: '0.78rem' }}>
                         <span>• {s.name}</span>
@@ -465,6 +622,23 @@ const PostJob = () => {
                     ))}
                   </div>
 
+                  {!directWorker && workersNeeded > 1 && (
+                    <div className="my-2 border-bottom py-2" style={{ fontSize: '0.8rem' }}>
+                      <div className="d-flex justify-content-between text-dark fw-bold">
+                        <span>👥 Worker Count</span>
+                        <span>{workersNeeded} workers</span>
+                      </div>
+                      <div className="d-flex justify-content-between text-muted mt-1" style={{ fontSize: '0.75rem' }}>
+                        <span>Standard Labor Subtotal (per worker)</span>
+                        <span>₹{laborCost}</span>
+                      </div>
+                      <div className="d-flex justify-content-between text-muted" style={{ fontSize: '0.75rem' }}>
+                        <span>Total Labor Cost ({workersNeeded} workers)</span>
+                        <span>₹{laborCost * workersNeeded}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Grand Total */}
                   <div className="rounded-3 p-3 mt-3 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg,#19875410,#0f513210)', border: '1.5px solid #a3cfbb' }}>
                     <span className="fw-bold text-dark" style={{ fontSize: '0.85rem' }}>💳 Grand Total</span>
@@ -472,7 +646,7 @@ const PostJob = () => {
                   </div>
 
                   <div className="text-muted mt-2" style={{ fontSize: '0.68rem', lineHeight: 1.4 }}>
-                    * Visiting fee is fixed. Task rates are standard for standard repair size.
+                    * Visiting fee is fixed. Task rates are scaled by the number of workers requested.
                   </div>
                 </div>
 
@@ -543,6 +717,15 @@ const PostJob = () => {
                       🗺️ Open in Maps
                     </a>
                   )}
+                </div>
+              )}
+
+              {!directWorker && (
+                <div className="py-2 border-bottom small">
+                  <div className="d-flex justify-content-between">
+                    <span className="text-muted fw-bold">👥 Workers Requested</span>
+                    <span className="fw-bold text-dark">{workersNeeded} worker{workersNeeded > 1 ? 's' : ''}</span>
+                  </div>
                 </div>
               )}
 

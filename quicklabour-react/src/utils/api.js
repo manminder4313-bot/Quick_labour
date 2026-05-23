@@ -123,6 +123,19 @@ export const api = {
     return request('/auth/profile');
   },
 
+  updateProfile: async (profileData) => {
+    const data = await request('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    });
+    if (data.fullName) sessionStorage.setItem('userName', data.fullName);
+    if (data.phone) sessionStorage.setItem('userPhone', data.phone);
+    if (data.address) sessionStorage.setItem('userAddress', data.address);
+    if (data.avatar) sessionStorage.setItem('userAvatar', data.avatar);
+    if (data.occupation !== undefined) sessionStorage.setItem('userOccupation', data.occupation);
+    return data;
+  },
+
   updateOnlineStatus: async (isOnline) => {
     const data = await request('/auth/status', {
       method: 'PUT',
