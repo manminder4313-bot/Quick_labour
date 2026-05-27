@@ -12,6 +12,7 @@ import reviewRoutes from './routes/reviews.js';
 import contactRoutes from './routes/contact.js';
 import adminRoutes from './routes/admin.js';
 import messageRoutes from './routes/messages.js';
+import paymentRoutes from './routes/payments.js';
 
 dotenv.config();
 
@@ -186,6 +187,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Serve Frontend Static Files
 const distPath = path.join(__dirname, '../quicklabour-react/dist');

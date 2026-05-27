@@ -140,6 +140,32 @@ const ChatWidget = ({ currentUserId, currentUserName, currentUserRole, currentUs
     setSending(false);
   };
 
+  const handleDeleteChat = async () => {
+    if (!currentUserId || !activeContact) return;
+    if (!window.confirm(`Are you sure you want to delete all messages with ${activeContact.fullName}? This cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${BASE_URL}/messages/conversation/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId1: currentUserId, userId2: activeContact._id }),
+      });
+      if (res.ok) {
+        setMessages([]);
+        setView('contacts');
+        setActiveContact(null);
+        fetchContacts();
+        fetchUnreadCount();
+      } else {
+        alert('Failed to delete conversation');
+      }
+    } catch (err) {
+      console.error('Error deleting conversation:', err);
+    }
+  };
+
   const openChatWith = (contact) => {
     setActiveContact(contact);
     setView('chat');
@@ -252,6 +278,36 @@ const ChatWidget = ({ currentUserId, currentUserName, currentUserRole, currentUs
                     {activeContact.role === 'worker' ? `👷 ${activeContact.occupation || 'Trade Worker'}` : activeContact.role === 'client' ? '🏠 Client' : '🛡️ Admin'}
                   </div>
                 </div>
+                {/* Delete Conversation Button */}
+                <button
+                  onClick={handleDeleteChat}
+                  title="Delete entire chat"
+                  style={{
+                    marginLeft: 'auto',
+                    background: 'rgba(220, 53, 69, 0.25)',
+                    border: '1px solid rgba(255, 255, 255, 0.4)',
+                    color: '#fff',
+                    borderRadius: '8px',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    transition: 'all 0.25s ease',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(220, 53, 69, 0.6)';
+                    e.currentTarget.style.transform = 'scale(1.08)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'rgba(220, 53, 69, 0.25)';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                >
+                  🗑️
+                </button>
               </div>
             ) : view === 'new' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

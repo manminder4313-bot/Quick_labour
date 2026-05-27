@@ -90,6 +90,8 @@ export const api = {
     sessionStorage.setItem('userPermissions', JSON.stringify(data.permissions || []));
     if (data.role === 'worker') {
       sessionStorage.setItem('userOccupation', data.occupation);
+      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
     }
     
     return data;
@@ -114,13 +116,20 @@ export const api = {
     sessionStorage.setItem('userPermissions', JSON.stringify(data.permissions || []));
     if (data.role === 'worker') {
       sessionStorage.setItem('userOccupation', data.occupation);
+      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
     }
 
     return data;
   },
 
   getProfile: async () => {
-    return request('/auth/profile');
+    const data = await request('/auth/profile');
+    if (data.role === 'worker') {
+      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
+    }
+    return data;
   },
 
   updateProfile: async (profileData) => {
@@ -133,6 +142,24 @@ export const api = {
     if (data.address) sessionStorage.setItem('userAddress', data.address);
     if (data.avatar) sessionStorage.setItem('userAvatar', data.avatar);
     if (data.occupation !== undefined) sessionStorage.setItem('userOccupation', data.occupation);
+    if (data.latitude !== undefined) sessionStorage.setItem('userLatitude', data.latitude);
+    if (data.longitude !== undefined) sessionStorage.setItem('userLongitude', data.longitude);
+    if (data.role === 'worker') {
+      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
+    }
+    return data;
+  },
+
+  subscribe: async (planType) => {
+    const data = await request('/auth/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ planType }),
+    });
+    if (data.user) {
+      sessionStorage.setItem('userPoints', data.user.points !== undefined ? data.user.points : 0);
+      sessionStorage.setItem('userAcceptedJobs', data.user.acceptedJobsCount !== undefined ? data.user.acceptedJobsCount : 0);
+    }
     return data;
   },
 
@@ -211,6 +238,20 @@ export const api = {
 
   logout: () => {
     sessionStorage.clear();
+  },
+
+  createPaymentIntent: async (planType) => {
+    return request('/payments/create-intent', {
+      method: 'POST',
+      body: JSON.stringify({ planType }),
+    });
+  },
+
+  verifyPaymentAndCredit: async (intentId, planType, isSimulated) => {
+    return request('/payments/verify-and-credit', {
+      method: 'POST',
+      body: JSON.stringify({ intentId, planType, isSimulated }),
+    });
   }
 };
 

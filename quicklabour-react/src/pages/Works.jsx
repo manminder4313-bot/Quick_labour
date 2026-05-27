@@ -77,6 +77,7 @@ const ALL_INDUSTRIES = ['All', '🏗️ Construction', '🏭 Industrial', '🌾 
 
 const Works = () => {
   const navigate = useNavigate();
+  const userRole = sessionStorage.getItem('userRole');
   const [activeFilter, setActiveFilter] = useState('All');
   const [visibleCount, setVisibleCount] = useState(9);
 
@@ -132,8 +133,11 @@ const Works = () => {
               <div key={index} className="col-md-4">
                 <div
                   className="worker-card"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/post-job?category=${encodeURIComponent(project.category)}`)}
+                  style={{ cursor: userRole === 'worker' ? 'default' : 'pointer' }}
+                  onClick={() => {
+                    if (userRole === 'worker') return;
+                    navigate(`/post-job?category=${encodeURIComponent(project.category)}`);
+                  }}
                 >
                   <div style={{ position: 'relative', overflow: 'hidden' }}>
                     <img
@@ -156,12 +160,27 @@ const Works = () => {
                   <div className="worker-info text-center">
                     <h6>{project.title}</h6>
                     <p className="role">{project.category}</p>
-                    <button
-                      className="btn-hire mt-1"
-                      onClick={e => { e.stopPropagation(); navigate(`/post-job?category=${encodeURIComponent(project.category)}`); }}
-                    >
-                      Book Now
-                    </button>
+                    {userRole === 'worker' ? (
+                      <button
+                        className="btn-hire mt-1"
+                        disabled
+                        style={{
+                          background: '#cbd5e1',
+                          borderColor: '#cbd5e1',
+                          color: '#64748b',
+                          cursor: 'not-allowed'
+                        }}
+                      >
+                        Restricted
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-hire mt-1"
+                        onClick={e => { e.stopPropagation(); navigate(`/post-job?category=${encodeURIComponent(project.category)}`); }}
+                      >
+                        Book Now
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -239,10 +258,27 @@ const Works = () => {
               <div key={index} className="col-6 col-md-3">
                 <div
                   className="cat-card p-4 text-center"
-                  style={{ border: '1.5px solid #e8edf5', borderRadius: '20px', cursor: 'pointer', transition: 'all 0.3s' }}
-                  onClick={() => navigate(`/post-job?category=${encodeURIComponent(work.title)}`)}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor='#0d6efd'; e.currentTarget.style.transform='translateY(-4px)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor='#e8edf5'; e.currentTarget.style.transform='translateY(0)'; }}
+                  style={{
+                    border: '1.5px solid #e8edf5',
+                    borderRadius: '20px',
+                    cursor: userRole === 'worker' ? 'default' : 'pointer',
+                    transition: 'all 0.3s',
+                    opacity: userRole === 'worker' ? 0.75 : 1
+                  }}
+                  onClick={() => {
+                    if (userRole === 'worker') return;
+                    navigate(`/post-job?category=${encodeURIComponent(work.title)}`);
+                  }}
+                  onMouseEnter={e => {
+                    if (userRole === 'worker') return;
+                    e.currentTarget.style.borderColor='#0d6efd';
+                    e.currentTarget.style.transform='translateY(-4px)';
+                  }}
+                  onMouseLeave={e => {
+                    if (userRole === 'worker') return;
+                    e.currentTarget.style.borderColor='#e8edf5';
+                    e.currentTarget.style.transform='translateY(0)';
+                  }}
                 >
                   <div style={{ fontSize: '2.2rem', marginBottom: 8 }}>{work.icon}</div>
                   <h6 className="fw-bold mb-1" style={{ color: '#0a2540' }}>{work.title}</h6>

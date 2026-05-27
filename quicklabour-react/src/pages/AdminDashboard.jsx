@@ -584,7 +584,10 @@ const AdminDashboard = () => {
                         </td>
                         <td>
                           <div className="fw-bold text-warning">{worker.rating || 4.9} ⭐</div>
-                          <span className="small text-muted">{worker.jobsCompleted || 0} completions</span>
+                          <div className="small text-muted mb-1">{worker.jobsCompleted || 0} completions</div>
+                          <span className="badge bg-warning bg-opacity-20 text-dark rounded-pill fw-bold small px-2 py-1" style={{ border: '1px solid #ffd43b', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            🪙 {worker.points !== undefined ? worker.points : 0} Points
+                          </span>
                         </td>
                         <td>
                           {worker.isOnline ? (
@@ -616,7 +619,7 @@ const AdminDashboard = () => {
                                 role: 'Worker / Labour',
                                 phone: worker.phone,
                                 address: worker.address || 'Not Provided',
-                                extra: `Occupation: ${worker.occupation} | Rating: ${worker.rating || '4.9'} ⭐`
+                                extra: `Occupation: ${worker.occupation} | Rating: ${worker.rating || '4.9'} ⭐ | Points Balance: ${worker.points !== undefined ? worker.points : 0} Points`
                               })}
                             >
                               ℹ️ More Details

@@ -323,6 +323,44 @@ const PostJob = () => {
     </div>
   );
 
+  const userRole = sessionStorage.getItem('userRole');
+
+  if (userRole === 'worker') {
+    return (
+      <div className="container py-5 mt-5">
+        <div className="row justify-content-center">
+          <div className="col-md-7 text-center">
+            <div className="card border-0 shadow-lg p-5" style={{ borderRadius: '24px', background: '#ffffff', border: '1.5px solid #e8ecf8' }}>
+              <div 
+                className="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle mb-4" 
+                style={{ width: '80px', height: '80px', fontSize: '2.5rem' }}
+              >
+                <i className="bi bi-shield-slash-fill text-danger animate-pulse"></i>
+              </div>
+              <h3 className="fw-800 mb-3" style={{ color: '#0a2540', fontWeight: 800 }}>Hiring Disabled for Workers</h3>
+              <p className="text-muted mb-4" style={{ fontSize: '0.98rem', lineHeight: '1.6' }}>
+                As a registered **Worker**, you are not eligible to hire other workers or post jobs. Creating service requests is restricted to Client and Industry accounts.
+              </p>
+              <div className="p-4 rounded-16 text-start mb-4" style={{ borderLeft: '4px solid #dc3545', background: '#fdf2f2' }}>
+                <span className="fw-700 text-danger d-block mb-1" style={{ fontSize: '0.88rem' }}>🔒 Role Restriction Notice</span>
+                <span className="text-muted small d-block" style={{ lineHeight: '1.4' }}>
+                  QuickLabour uses role-segregated profiles to protect user data and ensure worker points, ratings, and dashboard features function with the highest security and performance.
+                </span>
+              </div>
+              <button 
+                onClick={() => navigate('/worker-dashboard')} 
+                className="btn btn-primary w-100 py-3 fw-bold rounded-16 text-white border-0 shadow-sm"
+                style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', fontSize: '0.95rem' }}
+              >
+                <i className="bi bi-speedometer2 me-2"></i> Go to Worker Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container py-5 mt-4" style={{ maxWidth: '850px' }}>
 

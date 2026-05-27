@@ -25,6 +25,28 @@ router.get('/conversation', async (req, res) => {
   }
 });
 
+// POST /api/messages/conversation/delete
+// Deletes all messages between two users (clears chat)
+router.post('/conversation/delete', async (req, res) => {
+  try {
+    const { userId1, userId2 } = req.body;
+    if (!userId1 || !userId2) {
+      return res.status(400).json({ message: 'Both userId1 and userId2 are required' });
+    }
+
+    await Message.deleteMany({
+      $or: [
+        { senderId: userId1, receiverId: userId2 },
+        { senderId: userId2, receiverId: userId1 }
+      ]
+    });
+
+    res.json({ message: 'Conversation deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // GET /api/messages/contacts/:userId
 // Returns list of unique users who have exchanged messages with this user
 router.get('/contacts/:userId', async (req, res) => {

@@ -7,6 +7,22 @@ import Review from '../models/Review.js';
 
 const router = express.Router();
 
+const getDeductionPoints = (money) => {
+  const cleanStr = String(money || '').replace(/[^\d.]/g, '');
+  const val = parseFloat(cleanStr) || 0;
+  if (val <= 500) return 10;
+  if (val <= 1000) return 15;
+  if (val <= 1500) return 20;
+  if (val <= 2000) return 25;
+  if (val <= 2500) return 30;
+  if (val <= 3000) return 35;
+  if (val <= 3500) return 40;
+  if (val <= 4000) return 45;
+  if (val <= 4500) return 50;
+  if (val <= 5000) return 55;
+  return 60;
+};
+
 // Helper to calculate distance in km using the Haversine formula
 const getDistance = (lat1, lon1, lat2, lon2) => {
   if (!lat1 || !lon1 || !lat2 || !lon2) return null;
@@ -25,6 +41,9 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 // @route   POST /api/jobs
 // @access  Private (Client only)
 router.post('/', protect, async (req, res) => {
+  if (req.user.role === 'worker') {
+    return res.status(403).json({ message: 'Workers are not authorized to create jobs or hire other workers.' });
+  }
   const { name, location, fullAddress, latitude, longitude, repair, money, workerId, workersNeeded, invitedWorkers } = req.body;
 
   try {
@@ -53,7 +72,16 @@ router.post('/', protect, async (req, res) => {
       // Increment hired worker's job count
       const worker = await User.findById(workerId);
       if (worker) {
+        const pointsCost = getDeductionPoints(job.money);
+        if ((worker.points || 0) < pointsCost) {
+          return res.status(403).json({
+            message: 'INSUFFICIENT_POINTS',
+            error: `The selected worker does not have enough subscription points to accept this job. This job requires ${pointsCost} points, but they only have ${worker.points || 0} points.`
+          });
+        }
         worker.jobsCompleted = (worker.jobsCompleted || 0) + 1;
+        worker.acceptedJobsCount = (worker.acceptedJobsCount || 0) + 1;
+        worker.points = (worker.points || 0) - pointsCost;
         await worker.save();
       }
     } else if (invitedWorkers && invitedWorkers.length > 0) {
@@ -209,6 +237,9 @@ router.get('/', protect, async (req, res) => {
 // @route   PUT /api/jobs/:id/hire
 // @access  Private (Client only)
 router.put('/:id/hire', protect, async (req, res) => {
+  if (req.user.role === 'worker') {
+    return res.status(403).json({ message: 'Workers are not authorized to hire other workers.' });
+  }
   const { workerId, rate } = req.body;
 
   try {
@@ -232,7 +263,16 @@ router.put('/:id/hire', protect, async (req, res) => {
     // Increment hired worker's job count
     const worker = await User.findById(workerId);
     if (worker) {
-      worker.jobsCompleted += 1;
+      const pointsCost = getDeductionPoints(job.money);
+      if ((worker.points || 0) < pointsCost) {
+        return res.status(403).json({
+          message: 'INSUFFICIENT_POINTS',
+          error: `The selected worker does not have enough subscription points to accept this job. This job requires ${pointsCost} points, but they only have ${worker.points || 0} points.`
+        });
+      }
+      worker.jobsCompleted = (worker.jobsCompleted || 0) + 1;
+      worker.acceptedJobsCount = (worker.acceptedJobsCount || 0) + 1;
+      worker.points = (worker.points || 0) - pointsCost;
       await worker.save();
     }
 
@@ -246,6 +286,9 @@ router.put('/:id/hire', protect, async (req, res) => {
 // @route   PUT /api/jobs/:id/decline-bid
 // @access  Private (Client only)
 router.put('/:id/decline-bid', protect, async (req, res) => {
+  if (req.user.role === 'worker') {
+    return res.status(403).json({ message: 'Workers are not authorized to manage bids.' });
+  }
   const { bidderId } = req.body;
 
   try {
@@ -288,6 +331,26 @@ router.put('/:id/status', protect, async (req, res) => {
     if (!isClient && !isWorker) {
       // If it's a worker accepting a job that has no hiredWorker yet
       if (req.user.role === 'worker' && status === 'Accepted') {
+        const worker = await User.findById(req.user._id);
+        if (!worker) {
+          return res.status(404).json({ message: 'Worker profile not found' });
+        }
+
+        const pointsCost = getDeductionPoints(job.money);
+
+        if ((worker.points || 0) < pointsCost) {
+          return res.status(403).json({
+            message: 'INSUFFICIENT_POINTS',
+            error: `This job requires ${pointsCost} points, but you only have ${worker.points || 0} points. Please purchase a subscription to accept more jobs.`
+          });
+        }
+        // Deduct points
+        worker.points = (worker.points || 0) - pointsCost;
+
+        // Increment accepted jobs count
+        worker.acceptedJobsCount = (worker.acceptedJobsCount || 0) + 1;
+        await worker.save();
+
         job.hiredWorker = req.user._id;
         job.status = 'Accepted';
         job.bidders = [];
@@ -318,6 +381,20 @@ router.put('/:id/status', protect, async (req, res) => {
     */
 
     const updatedJob = await job.save();
+
+    // Automatically delete chat messages if the status is set to Completed
+    if (status === 'Completed' && job.hiredWorker) {
+      const clientId = job.client && (job.client._id ? job.client._id.toString() : job.client.toString());
+      const workerId = job.hiredWorker && (job.hiredWorker._id ? job.hiredWorker._id.toString() : job.hiredWorker.toString());
+      if (clientId && workerId) {
+        await Message.deleteMany({
+          $or: [
+            { senderId: clientId, receiverId: workerId },
+            { senderId: workerId, receiverId: clientId }
+          ]
+        });
+      }
+    }
 
     // Auto-generate details exchange chat messages upon accepting
     if (status === 'Accepted' && job.hiredWorker) {
@@ -376,6 +453,9 @@ router.put('/:id/status', protect, async (req, res) => {
 // @route   PUT /api/jobs/:id/complete
 // @access  Private (Client only)
 router.put('/:id/complete', protect, async (req, res) => {
+  if (req.user.role === 'worker') {
+    return res.status(403).json({ message: 'Workers are not authorized to complete jobs.' });
+  }
   const { rating, reviewText } = req.body;
 
   try {
@@ -425,6 +505,18 @@ router.put('/:id/complete', protect, async (req, res) => {
       worker.rating = Math.min(parseFloat(newRating.toFixed(1)), 5.0);
       worker.jobsCompleted = newJobs;
       await worker.save();
+    }
+
+    // 5. Automatically delete all chat messages between the client and the hired worker
+    const clientId = job.client && (job.client._id ? job.client._id.toString() : job.client.toString());
+    const workerId = job.hiredWorker && (job.hiredWorker._id ? job.hiredWorker._id.toString() : job.hiredWorker.toString());
+    if (clientId && workerId) {
+      await Message.deleteMany({
+        $or: [
+          { senderId: clientId, receiverId: workerId },
+          { senderId: workerId, receiverId: clientId }
+        ]
+      });
     }
 
     res.json({ message: 'Job completed and worker rating updated successfully!', job });

@@ -65,6 +65,8 @@ router.post('/register', async (req, res) => {
         longitude: user.longitude,
         isOnline: user.isOnline,
         rating: user.rating,
+        acceptedJobsCount: user.acceptedJobsCount,
+        points: user.points,
         token: generateToken(user._id),
         permissions: user.role === 'admin' 
           ? (user.permissions && user.permissions.length > 0 
@@ -110,6 +112,8 @@ router.post('/login', async (req, res) => {
         longitude: user.longitude,
         isOnline: user.isOnline,
         rating: user.rating,
+        acceptedJobsCount: user.acceptedJobsCount,
+        points: user.points,
         token: generateToken(user._id),
         permissions: user.role === 'admin' 
           ? (user.permissions && user.permissions.length > 0 
@@ -149,6 +153,8 @@ router.get('/profile', protect, async (req, res) => {
         isOnline: user.isOnline,
         rating: user.rating,
         jobsCompleted: user.jobsCompleted,
+        acceptedJobsCount: user.acceptedJobsCount,
+        points: user.points,
         skills: user.skills,
         permissions: user.role === 'admin' 
           ? (user.permissions && user.permissions.length > 0 
@@ -178,8 +184,10 @@ router.put('/profile', protect, async (req, res) => {
       user.phone = req.body.phone || user.phone;
       user.address = req.body.address || user.address;
       user.avatar = req.body.avatar || user.avatar;
+      if (req.body.latitude !== undefined) user.latitude = req.body.latitude;
+      if (req.body.longitude !== undefined) user.longitude = req.body.longitude;
       
-      if (user.role === 'worker' && req.body.occupation) {
+      if ((user.role === 'worker' || user.occupation !== undefined) && req.body.occupation) {
         user.occupation = req.body.occupation;
         user.skills = [req.body.occupation];
       }
@@ -200,6 +208,8 @@ router.put('/profile', protect, async (req, res) => {
         isOnline: updatedUser.isOnline,
         rating: updatedUser.rating,
         jobsCompleted: updatedUser.jobsCompleted,
+        acceptedJobsCount: updatedUser.acceptedJobsCount,
+        points: updatedUser.points,
         skills: updatedUser.skills
       });
     } else {
@@ -244,6 +254,78 @@ router.get('/workers', async (req, res) => {
     }
     const workers = await User.find(query).select('-password');
     res.json(workers);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Purchase a subscription plan to add points
+// @route   POST /api/auth/subscribe
+// @access  Private (Worker only)
+router.post('/subscribe', protect, async (req, res) => {
+  const { planType } = req.body;
+
+  if (req.user.role !== 'worker') {
+    return res.status(400).json({ message: 'Only workers can purchase subscriptions' });
+  }
+
+  let pointsToAdd = 0;
+  let price = 0;
+  let gst = 0;
+  let total = 0;
+
+  if (planType === 'basic') {
+    price = 100;
+    pointsToAdd = 90;
+  } else if (planType === 'standard') {
+    price = 200;
+    pointsToAdd = 190;
+  } else if (planType === 'premium') {
+    price = 500;
+    pointsToAdd = 460;
+  } else {
+    return res.status(400).json({ message: 'Invalid subscription plan type' });
+  }
+
+  gst = price * 0.05; // 5% GST
+  total = price + gst;
+
+  try {
+    const worker = await User.findById(req.user._id);
+    if (!worker) {
+      return res.status(404).json({ message: 'Worker profile not found' });
+    }
+
+    worker.points = (worker.points || 0) + pointsToAdd;
+    await worker.save();
+
+    res.json({
+      message: `Successfully purchased ${planType} plan!`,
+      planType,
+      price,
+      gst,
+      total,
+      pointsAdded: pointsToAdd,
+      updatedPoints: worker.points,
+      user: {
+        _id: worker._id,
+        fullName: worker.fullName,
+        email: worker.email,
+        phone: worker.phone,
+        address: worker.address,
+        role: worker.role,
+        occupation: worker.occupation,
+        avatar: worker.avatar,
+        latitude: worker.latitude,
+        longitude: worker.longitude,
+        isOnline: worker.isOnline,
+        rating: worker.rating,
+        jobsCompleted: worker.jobsCompleted,
+        acceptedJobsCount: worker.acceptedJobsCount,
+        points: worker.points,
+        skills: worker.skills,
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

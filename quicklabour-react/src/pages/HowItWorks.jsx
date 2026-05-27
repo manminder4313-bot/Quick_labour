@@ -21,6 +21,8 @@ const whyReasons = [
 ];
 
 const HowItWorks = () => {
+  const userRole = sessionStorage.getItem('userRole');
+
   return (
     <div>
       {/* HERO */}
@@ -86,13 +88,23 @@ const HowItWorks = () => {
       </section>
 
       {/* CTA */}
-      <section id="cta" className="cta-new text-center py-5" style={{ background: 'linear-gradient(135deg, #0d6efd, #0a2540)', color: 'white' }}>
-        <div className="container">
-          <h2 className="fw-bold">Ready to Get Started?</h2>
-          <p className="mb-4">Post your job and hire workers instantly.</p>
-          <Link to="/post-job" className="btn btn-warning btn-lg px-5 fw-bold" style={{ borderRadius: '50px' }}>Post a Job</Link>
-        </div>
-      </section>
+      {userRole === 'worker' ? (
+        <section id="cta" className="cta-new text-center py-5" style={{ background: 'linear-gradient(135deg, #1db97a, #0a2540)', color: 'white' }}>
+          <div className="container">
+            <h2 className="fw-bold">Ready to Find Work?</h2>
+            <p className="mb-4">Go online, accept invitations, and start earning today.</p>
+            <Link to="/worker-dashboard" className="btn btn-warning btn-lg px-5 fw-bold" style={{ borderRadius: '50px' }}>Go to Dashboard</Link>
+          </div>
+        </section>
+      ) : (
+        <section id="cta" className="cta-new text-center py-5" style={{ background: 'linear-gradient(135deg, #0d6efd, #0a2540)', color: 'white' }}>
+          <div className="container">
+            <h2 className="fw-bold">Ready to Get Started?</h2>
+            <p className="mb-4">Post your job and hire workers instantly.</p>
+            <Link to="/post-job" className="btn btn-warning btn-lg px-5 fw-bold" style={{ borderRadius: '50px' }}>Post a Job</Link>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

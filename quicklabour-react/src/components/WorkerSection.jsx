@@ -43,14 +43,18 @@ const workers = [
 
 const WorkerCard = ({ worker }) => {
   const navigate = useNavigate();
-
+  const userRole = sessionStorage.getItem('userRole');
+ 
   const handleHire = () => {
-    const isLoggedIn = !!sessionStorage.getItem('userRole');
-    if (!isLoggedIn) {
+    const role = sessionStorage.getItem('userRole');
+    if (!role) {
       navigate('/login');
       return;
     }
-
+    if (role === 'worker') {
+      return;
+    }
+ 
     // Map worker role/specialty to standard booking categories
     let category = 'Construction Labour';
     const roleLower = (worker.role || '').toLowerCase();
@@ -63,14 +67,14 @@ const WorkerCard = ({ worker }) => {
     } else if (roleLower.includes('paint')) {
       category = 'Painter';
     }
-
+ 
     if (worker._id) {
       navigate(`/post-job?category=${encodeURIComponent(category)}&workerId=${worker._id}&workerName=${encodeURIComponent(worker.name)}&workerAvatar=${encodeURIComponent(worker.img)}`);
     } else {
       navigate(`/post-job?category=${encodeURIComponent(category)}`);
     }
   };
-
+ 
   return (
     <div className="col-sm-6 col-lg-3 reveal visible">
       <div className="worker-card">
@@ -94,12 +98,28 @@ const WorkerCard = ({ worker }) => {
             <span className="rate">{worker.rate}</span>
             <small className="text-muted"><i className="bi bi-geo-alt me-1"></i>{worker.location}</small>
           </div>
-          <button
-            className="btn-hire"
-            onClick={handleHire}
-          >
-            Hire Now
-          </button>
+          {userRole === 'worker' ? (
+            <button
+              className="btn-hire"
+              disabled
+              style={{
+                background: '#cbd5e1',
+                borderColor: '#cbd5e1',
+                color: '#64748b',
+                cursor: 'not-allowed',
+                boxShadow: 'none'
+              }}
+            >
+              Hiring Restricted
+            </button>
+          ) : (
+            <button
+              className="btn-hire"
+              onClick={handleHire}
+            >
+              Hire Now
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -17,6 +17,7 @@ const INDUSTRY_ICONS = {
 
 const Categories = () => {
   const navigate = useNavigate();
+  const userRole = sessionStorage.getItem('userRole');
   const [activeIndustry, setActiveIndustry] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -179,12 +180,28 @@ const Categories = () => {
                         </div>
 
                         {/* Hire Button */}
-                        <button
-                          className="btn-category"
-                          onClick={() => handleHire(spec.name)}
-                        >
-                          Hire {spec.name}
-                        </button>
+                        {userRole === 'worker' ? (
+                          <button
+                            className="btn-category"
+                            disabled
+                            style={{
+                              background: '#cbd5e1',
+                              borderColor: '#cbd5e1',
+                              color: '#64748b',
+                              cursor: 'not-allowed',
+                              boxShadow: 'none'
+                            }}
+                          >
+                            Hiring Restricted
+                          </button>
+                        ) : (
+                          <button
+                            className="btn-category"
+                            onClick={() => handleHire(spec.name)}
+                          >
+                            Hire {spec.name}
+                          </button>
+                        )}
 
                       </div>
                     </div>

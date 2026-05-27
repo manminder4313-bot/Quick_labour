@@ -43,12 +43,14 @@ const scrollItems = [...allCategories, ...allCategories];
 
 const CategorySection = () => {
   const navigate = useNavigate();
+  const userRole = sessionStorage.getItem('userRole');
   const trackRef = useRef(null);
   const animRef  = useRef(null);
   const pausedRef = useRef(false);
   const posRef   = useRef(0);
 
   const handleCardClick = (category) => {
+    if (userRole === 'worker') return;
     navigate(`/post-job?category=${encodeURIComponent(category)}`);
   };
 
@@ -134,8 +136,9 @@ const CategorySection = () => {
                   width: 140,
                   minWidth: 140,
                   flexShrink: 0,
-                  cursor: 'pointer',
+                  cursor: userRole === 'worker' ? 'default' : 'pointer',
                   padding: '20px 12px',
+                  opacity: userRole === 'worker' ? 0.8 : 1,
                 }}
               >
                 {/* Icon circle */}
