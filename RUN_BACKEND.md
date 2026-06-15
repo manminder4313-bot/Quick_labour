@@ -30,7 +30,7 @@ You can launch both the frontend and backend simultaneously. Open two terminals 
 cd quicklabour-backend
 npm run start
 ```
-*The server will boot up on port `5000`. On the very first run, it will automatically connect to MongoDB Atlas and seed all tester accounts (`client@quicklabour.com` & `worker@quicklabour.com`) and reviews if they don't already exist!*
+*The server will boot up on port `5000`. On the very first run, it will automatically connect to MongoDB Atlas and seed the admin tester account (`admin@quicklabour.com`) and reviews if they don't already exist!*
 
 ### Terminal 2: Run React Frontend
 ```bash

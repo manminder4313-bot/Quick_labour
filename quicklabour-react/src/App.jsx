@@ -15,6 +15,9 @@ import WorkerDashboard from './pages/WorkerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import IndustryDashboard from './pages/IndustryDashboard';
 import IndustryRegister from './pages/IndustryRegister';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import RefundPolicy from './pages/RefundPolicy';
+import WorkerConduct from './pages/WorkerConduct';
 import './App.css';
 
 function App() {
@@ -37,6 +40,9 @@ function App() {
             <Route path="/admin-dashboard" element={<AdminDashboard />} />
             <Route path="/industry-dashboard" element={<IndustryDashboard />} />
             <Route path="/industry-register" element={<IndustryRegister />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/refund-policy" element={<RefundPolicy />} />
+            <Route path="/worker-conduct" element={<WorkerConduct />} />
           </Routes>
         </main>
         <Footer />

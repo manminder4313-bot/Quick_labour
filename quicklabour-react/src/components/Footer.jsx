@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const Footer = () => {
   return (
@@ -22,31 +23,31 @@ const Footer = () => {
           </div>
           <div className="col-6 col-md-2">
             <h6>Company</h6>
-            <a href="#">About Us</a>
+            <Link to="/contact">About Us</Link>
             <a href="#">Careers</a>
             <a href="#">Blog</a>
             <a href="#">Press</a>
           </div>
           <div className="col-6 col-md-2">
             <h6>For Employers</h6>
-            <a href="#">Post a Job</a>
+            <Link to="/post-job">Post a Job</Link>
             <a href="#">Pricing</a>
             <a href="#">Enterprise</a>
             <a href="#">Success Stories</a>
           </div>
           <div className="col-6 col-md-2">
             <h6>For Workers</h6>
-            <a href="#">Join as Worker</a>
-            <a href="#">How to Earn</a>
-            <a href="#">Training</a>
+            <Link to="/login">Join as Worker</Link>
+            <Link to="/how-it-works">How to Earn</Link>
+            <Link to="/worker-conduct">Code of Conduct</Link>
             <a href="#">Worker App</a>
           </div>
           <div className="col-6 col-md-2">
             <h6>Support</h6>
-            <a href="#">Help Centre</a>
-            <a href="#">Contact Us</a>
-            <a href="#">Privacy Policy</a>
-            <a href="#">Terms</a>
+            <Link to="/contact">Help Centre</Link>
+            <Link to="/contact">Contact Us</Link>
+            <Link to="/privacy-policy">Privacy Policy</Link>
+            <Link to="/refund-policy">Refund Policy</Link>
           </div>
         </div>
         <hr className="footer-divider" />
@@ -55,9 +56,9 @@ const Footer = () => {
             © {new Date().getFullYear()} QuickLabour Pvt. Ltd. All rights reserved.
           </p>
           <div className="d-flex gap-3" style={{ fontSize: '0.85rem' }}>
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Cookies</a>
+            <Link to="/privacy-policy">Privacy</Link>
+            <Link to="/refund-policy">Refund & Cancellations</Link>
+            <Link to="/worker-conduct">Worker Conduct</Link>
           </div>
         </div>
       </div>

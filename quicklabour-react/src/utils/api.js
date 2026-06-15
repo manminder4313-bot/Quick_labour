@@ -71,10 +71,10 @@ export const api = {
   },
 
   // Auth endpoints
-  login: async (email, password) => {
+  login: async (email, password, role) => {
     const data = await request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, role }),
     });
     
     // Store token and details in sessionStorage
@@ -88,10 +88,16 @@ export const api = {
     sessionStorage.setItem('userAvatar', data.avatar);
     sessionStorage.setItem('userOnlineStatus', data.isOnline);
     sessionStorage.setItem('userPermissions', JSON.stringify(data.permissions || []));
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    if (data.createdAt) {
+      sessionStorage.setItem('userCreatedAt', data.createdAt);
+    }
     if (data.role === 'worker') {
       sessionStorage.setItem('userOccupation', data.occupation);
       sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
+      sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
+      sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
     }
     
     return data;
@@ -114,10 +120,16 @@ export const api = {
     sessionStorage.setItem('userAvatar', data.avatar);
     sessionStorage.setItem('userOnlineStatus', data.isOnline);
     sessionStorage.setItem('userPermissions', JSON.stringify(data.permissions || []));
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    if (data.createdAt) {
+      sessionStorage.setItem('userCreatedAt', data.createdAt);
+    }
     if (data.role === 'worker') {
       sessionStorage.setItem('userOccupation', data.occupation);
       sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
+      sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
+      sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
     }
 
     return data;
@@ -125,9 +137,15 @@ export const api = {
 
   getProfile: async () => {
     const data = await request('/auth/profile');
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    if (data.createdAt) {
+      sessionStorage.setItem('userCreatedAt', data.createdAt);
+    }
     if (data.role === 'worker') {
       sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
+      sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
+      sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
     }
     return data;
   },
@@ -144,9 +162,15 @@ export const api = {
     if (data.occupation !== undefined) sessionStorage.setItem('userOccupation', data.occupation);
     if (data.latitude !== undefined) sessionStorage.setItem('userLatitude', data.latitude);
     if (data.longitude !== undefined) sessionStorage.setItem('userLongitude', data.longitude);
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    if (data.createdAt) {
+      sessionStorage.setItem('userCreatedAt', data.createdAt);
+    }
     if (data.role === 'worker') {
       sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
+      sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
+      sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
     }
     return data;
   },
@@ -169,6 +193,34 @@ export const api = {
       body: JSON.stringify({ isOnline }),
     });
     sessionStorage.setItem('userOnlineStatus', data.isOnline);
+    return data;
+  },
+
+  addWalletMoney: async (amount, method) => {
+    const data = await request('/auth/wallet/add', {
+      method: 'POST',
+      body: JSON.stringify({ amount, method }),
+    });
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    return data;
+  },
+
+  transferWalletMoney: async (workerId, amount) => {
+    const data = await request('/auth/wallet/transfer', {
+      method: 'POST',
+      body: JSON.stringify({ workerId, amount }),
+    });
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    return data;
+  },
+
+  rechargePointsWallet: async (planType) => {
+    const data = await request('/auth/recharge-points-wallet', {
+      method: 'POST',
+      body: JSON.stringify({ planType }),
+    });
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    sessionStorage.setItem('userPoints', data.updatedPoints !== undefined ? data.updatedPoints : 0);
     return data;
   },
 
@@ -209,10 +261,10 @@ export const api = {
     });
   },
 
-  completeJob: async (jobId, rating, reviewText) => {
+  completeJob: async (jobId, rating, reviewText, paymentMode, onlineMethod) => {
     return request(`/jobs/${jobId}/complete`, {
       method: 'PUT',
-      body: JSON.stringify({ rating, reviewText }),
+      body: JSON.stringify({ rating, reviewText, paymentMode, onlineMethod }),
     });
   },
 

@@ -33,6 +33,30 @@ const createThenableQuery = (executor) => {
 const User = {
   findOne: (query) => {
     return createThenableQuery(async (selectFields) => {
+      if (query && query.role === 'client') {
+        const cleanQuery = { ...query };
+        delete cleanQuery.role;
+        let qClient = Client.findOne(cleanQuery);
+        if (selectFields) qClient = qClient.select(selectFields);
+        return await qClient;
+      }
+      
+      if (query && query.role === 'worker') {
+        const cleanQuery = { ...query };
+        delete cleanQuery.role;
+        let qLabour = Labour.findOne(cleanQuery);
+        if (selectFields) qLabour = qLabour.select(selectFields);
+        return await qLabour;
+      }
+      
+      if (query && query.role === 'admin') {
+        const cleanQuery = { ...query };
+        delete cleanQuery.role;
+        let qAdmin = Admin.findOne(cleanQuery);
+        if (selectFields) qAdmin = qAdmin.select(selectFields);
+        return await qAdmin;
+      }
+
       let qClient = Client.findOne(query);
       if (selectFields) qClient = qClient.select(selectFields);
       let result = await qClient;

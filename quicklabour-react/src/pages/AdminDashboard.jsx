@@ -43,7 +43,30 @@ const AdminDashboard = () => {
     avatar: '',
   });
   const [creatingAdmin, setCreatingAdmin] = useState(false);
-  const [adminError, setAdminError] = useState('');
+  const [disputes, setDisputes] = useState(
+    JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]')
+  );
+
+  // Sync disputes regularly
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setDisputes(JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]'));
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const handleResolveDispute = (disputeId, decision) => {
+    const updated = disputes.map(d => {
+      if (d._id === disputeId) {
+        return { ...d, status: 'Resolved', resolutionDecision: decision };
+      }
+      return d;
+    });
+    setDisputes(updated);
+    localStorage.setItem('quicklabour_disputes', JSON.stringify(updated));
+    alert(`✅ Dispute resolved successfully. Decision: "${decision}" recorded.`);
+  };
 
 
 
@@ -59,6 +82,7 @@ const AdminDashboard = () => {
   const hasPermission = (tab) => {
     // Root admin has total access
     if (sessionStorage.getItem('userEmail') === 'admin@quicklabour.com') return true;
+    if (tab === 'disputes' && (userPermissions.includes('admins') || userPermissions.includes('overview'))) return true;
     return userPermissions.includes(tab);
   };
 
@@ -73,10 +97,17 @@ const AdminDashboard = () => {
     }
 
     fetchAdminData();
+
+    // Auto-refresh admin dashboard silently every 5 seconds
+    const interval = setInterval(() => {
+      fetchAdminData(true);
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [navigate]);
 
   useEffect(() => {
-    const tabsList = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins'];
+    const tabsList = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins', 'disputes'];
     const allowedTabs = tabsList.filter(t => hasPermission(t));
     if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
       setActiveTab(allowedTabs[0]);
@@ -124,8 +155,8 @@ const AdminDashboard = () => {
     setShowPlaintextInAuditor(false);
   };
 
-  const fetchAdminData = async () => {
-    setLoading(true);
+  const fetchAdminData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setError('');
     try {
       // Sync permissions in real-time
@@ -206,7 +237,7 @@ const AdminDashboard = () => {
     setAdminError('');
     try {
       // By default give full access permissions
-      const permissions = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins'];
+      const permissions = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins', 'disputes'];
       await api.post('/admin/admins', {
         ...adminForm,
         permissions
@@ -408,6 +439,11 @@ const AdminDashboard = () => {
             {hasPermission('admins') && (
               <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'admins' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('admins'); setSearchTerm(''); }}>
                 🛡️ Admins ({admins.length})
+              </button>
+            )}
+            {hasPermission('disputes') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'disputes' ? 'active bg-danger text-white' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('disputes'); setSearchTerm(''); }}>
+                ⚖️ Disputes Panel ({JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]').length})
               </button>
             )}
           </div>
@@ -859,6 +895,95 @@ const AdminDashboard = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* TAB 8: DISPUTES RESOLUTION PANEL */}
+          {activeTab === 'disputes' && hasPermission('disputes') && (
+            <div>
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <h5 className="fw-bold mb-0 text-dark">⚖️ Safe Platform Disputes & Escalation Resolution Desk</h5>
+                <span className="badge bg-danger text-white fw-bold px-3 py-2">
+                  {disputes.filter(d => d.status !== 'Resolved').length} Unresolved Cases
+                </span>
+              </div>
+              <div className="alert alert-info rounded-3 py-2 px-3 mb-4" style={{ fontSize: '0.88rem' }}>
+                ℹ️ QuickLabour Administrator safety policy requires auditing caller screenshot details, GPS tracking coordinates, and physical selfie evidence before releasing or wallet penalty adjustments.
+              </div>
+
+              {disputes.length > 0 ? (
+                <div className="row g-4">
+                  {disputes.map((disp) => (
+                    <div key={disp._id} className="col-md-6 col-lg-6">
+                      <div className="card rounded-4 shadow-sm border-0 p-4 bg-white text-start h-100">
+                        <div className="d-flex justify-content-between align-items-start mb-3">
+                          <div>
+                            <span className="badge bg-danger bg-opacity-10 text-danger fw-700 small" style={{ fontSize: '0.7rem' }}>
+                              FILED BY: {disp.submittedBy.toUpperCase()}
+                            </span>
+                            <h6 className="fw-bold text-dark mt-1 mb-0">{disp.jobTitle}</h6>
+                            <span className="small text-muted" style={{ fontSize: '0.75rem' }}>Filed: {disp.createdAt}</span>
+                          </div>
+                          <span className={`badge px-2 py-1 rounded-pill ${
+                            disp.status === 'Resolved' ? 'bg-success text-white' : 'bg-warning text-white'
+                          }`}>
+                            {disp.status}
+                          </span>
+                        </div>
+
+                        <div className="mb-3 p-3 bg-light rounded-3 border">
+                          <div className="small text-dark mb-1"><strong>Client:</strong> {disp.clientName}</div>
+                          <div className="small text-dark mb-2"><strong>Worker:</strong> {disp.workerName}</div>
+                          <hr className="my-2 text-muted" />
+                          <div className="small text-muted mb-0"><strong>Escalation Reason:</strong></div>
+                          <div className="small text-dark mt-1 font-monospace" style={{ fontSize: '0.8rem' }}>"{disp.reason}"</div>
+                        </div>
+
+                        <div className="d-flex gap-2 mb-3 flex-wrap">
+                          <div>
+                            <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Selfie Proof</span>
+                            <img src={disp.photo} alt="Selfie" className="rounded border shadow-sm" style={{ width: '60px', height: '60px', objectFit: 'cover', cursor: 'pointer' }} onClick={() => setSelectedDoc({ name: `${disp.submittedBy} Selfie Proof`, type: 'Selfie Photo', file: disp.photo })} />
+                          </div>
+                          <div>
+                            <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Call Log Proof</span>
+                            <img src={disp.callLog} alt="Call Logs" className="rounded border shadow-sm" style={{ width: '60px', height: '60px', objectFit: 'cover', cursor: 'pointer' }} onClick={() => setSelectedDoc({ name: `${disp.submittedBy} Call Log Proof`, type: 'Call Screenshot', file: disp.callLog })} />
+                          </div>
+                          <div>
+                            <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>GPS Coordinates</span>
+                            <span className="badge bg-secondary text-white font-monospace" style={{ fontSize: '0.72rem', padding: '6px' }}>{disp.gpsLocation}</span>
+                          </div>
+                        </div>
+
+                        {disp.status !== 'Resolved' ? (
+                          <div className="mt-auto pt-3 border-top d-flex gap-2">
+                            <button
+                              onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Client (${disp.clientName}). Worker penalized.`)}
+                              className="btn btn-sm btn-outline-primary fw-bold flex-fill rounded-3"
+                            >
+                              Rule in favor of Client
+                            </button>
+                            <button
+                              onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Worker (${disp.workerName}). Compensation confirmed.`)}
+                              className="btn btn-sm btn-outline-success fw-bold flex-fill rounded-3"
+                            >
+                              Rule in favor of Worker
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-auto pt-3 border-top small text-success fw-bold">
+                            Resolved: "{disp.resolutionDecision}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-5 text-muted">
+                  <i className="bi bi-shield-check fs-1 text-success opacity-75 mb-3 d-block"></i>
+                  <h6 className="fw-bold">All clean! No active disputes or escalated complaints.</h6>
+                </div>
+              )}
             </div>
           )}
 

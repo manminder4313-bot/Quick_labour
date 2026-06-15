@@ -23,16 +23,18 @@ const Login = () => {
   const [address, setAddress] = useState('');
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
-  const [idType, setIdType] = useState('Aadhaar');
+  const [idType, setIdType] = useState('');
   const [idFile, setIdFile] = useState(null);
   const [idFileName, setIdFileName] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [occupation, setOccupation] = useState('Construction Labour');
-  const [selectedIndustry, setSelectedIndustry] = useState('Construction Labour');
+  const [occupation, setOccupation] = useState('');
+  const [selectedIndustry, setSelectedIndustry] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   // OTP Verification States
   const [showOtp, setShowOtp] = useState(false);
@@ -86,7 +88,8 @@ const Login = () => {
     setSuccessMessage('');
 
     try {
-      const data = await api.login(email, password);
+      const loginRole = activeTab === 'worker' ? 'worker' : 'client';
+      const data = await api.login(email, password, loginRole);
       setSuccessMessage(`🎉 Login Successful! Redirecting to your dashboard...`);
       setTimeout(() => {
         if (data.role === 'admin') {
@@ -107,6 +110,21 @@ const Login = () => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+
+    if (!agreedToTerms) {
+      setErrorMessage('❌ You must agree to the QuickLabour Terms & Conditions to create an account.');
+      return;
+    }
+
+    if (activeTab === 'worker' && !occupation) {
+      setErrorMessage('❌ Please select your Primary Occupation / Trade!');
+      return;
+    }
+
+    if (!idType) {
+      setErrorMessage('❌ Please select an ID Proof Document!');
+      return;
+    }
 
     if (signUpPassword !== confirmPassword) {
       setErrorMessage('❌ Passwords do not match!');
@@ -153,7 +171,7 @@ const Login = () => {
         const isIndustry = activeTab === 'industry';
         const userData = {
           fullName: isIndustry ? companyName : fullName,
-          email: `${phone.replace(/[^0-9]/g, '')}@quicklabour.com`,
+          email: phone.replace(/[^0-9]/g, ''),
           password: signUpPassword,
           phone,
           address,
@@ -552,9 +570,11 @@ const Login = () => {
                                   </button>
                                 ))}
                               </div>
-                              <div style={{ marginTop: 10, padding: '8px 14px', background: '#f0fdf4', borderRadius: 10, border: '1.5px solid #bbf7d0', fontSize: '0.82rem', color: '#15803d', fontWeight: 600 }}>
-                                ✅ Selected: <strong>{occupation}</strong> &nbsp;·&nbsp; ₹{LABOUR_INDUSTRIES[selectedIndustry]?.specialties.find(s => s.name === occupation)?.baseRate || '—'}/day base rate
-                              </div>
+                              {selectedIndustry && occupation && (
+                                <div style={{ marginTop: 10, padding: '8px 14px', background: '#f0fdf4', borderRadius: 10, border: '1.5px solid #bbf7d0', fontSize: '0.82rem', color: '#15803d', fontWeight: 600 }}>
+                                  ✅ Selected: <strong>{occupation}</strong> &nbsp;·&nbsp; ₹{LABOUR_INDUSTRIES[selectedIndustry]?.specialties.find(s => s.name === occupation)?.baseRate || '—'}/day base rate
+                                </div>
+                              )}
                             </div>
                           )}
                           <input type="hidden" value={occupation} required />
@@ -566,7 +586,8 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0">
                         <label>Select ID Proof Document</label>
-                        <select className="form-select border-1.5 p-2 rounded-12 text-muted" style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }} value={idType} onChange={(e) => setIdType(e.target.value)}>
+                        <select className="form-select border-1.5 p-2 rounded-12 text-muted" style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }} value={idType} onChange={(e) => setIdType(e.target.value)} required>
+                          <option value="">-- Choose ID Document --</option>
                           <option value="Aadhaar">Aadhaar Card (UIDAI)</option>
                           <option value="PAN">PAN Card (Income Tax)</option>
                         </select>
@@ -613,9 +634,26 @@ const Login = () => {
                   </div>
 
                   {activeTab !== 'industry' && (
-                    <button type="submit" className="login-submit-btn mt-4">
-                      {activeTab === 'client' ? '🧑 Register as Client' : '🔧 Register as Worker'}
-                    </button>
+                    <>
+                      <div className="form-check mb-3 mt-4 text-start d-flex align-items-start gap-2">
+                        <input 
+                          className="form-check-input mt-1" 
+                          type="checkbox" 
+                          id="termsAgreementCheckbox" 
+                          checked={agreedToTerms}
+                          onChange={(e) => setAgreedToTerms(e.target.checked)}
+                          required
+                          style={{ cursor: 'pointer', flexShrink: 0 }}
+                        />
+                        <label className="form-check-label text-muted small fw-600 mb-0" htmlFor="termsAgreementCheckbox" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                          I have read and agree to the <span className="text-primary fw-700 text-decoration-underline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTermsModal(true); }} style={{ cursor: 'pointer' }}>QuickLabour Terms & Conditions</span>
+                        </label>
+                      </div>
+                      
+                      <button type="submit" className="login-submit-btn">
+                        {activeTab === 'client' ? '🧑 Register as Client' : '🔧 Register as Worker'}
+                      </button>
+                    </>
                   )}
                 </form>
               ) : (
@@ -625,7 +663,7 @@ const Login = () => {
                     <label>Email Address or Phone Number</label>
                     <input
                       type="text"
-                      placeholder={activeTab === 'client' ? "e.g. client@quicklabour.com" : "e.g. worker@quicklabour.com"}
+                      placeholder={activeTab === 'client' ? "e.g. 9874563210 or client123" : "e.g. 9874563210 or worker123"}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -693,6 +731,156 @@ const Login = () => {
           
         </div>
       </div>
+
+      {/* Terms & Conditions Modal */}
+      {showTermsModal && (
+        <div 
+          className="modal fade show d-block" 
+          tabIndex="-1" 
+          style={{ background: 'rgba(10, 37, 64, 0.7)', backdropFilter: 'blur(8px)', zIndex: 1060 }}
+        >
+          <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div className="modal-content border-0 shadow-lg animate-fade-in" style={{ borderRadius: '24px' }}>
+              <div className="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+                <div className="d-flex align-items-center gap-2.5">
+                  <div className="bg-primary bg-opacity-10 p-2 rounded-12 d-flex align-items-center justify-content-center text-primary" style={{ width: '38px', height: '38px' }}>
+                    <i className="bi bi-file-earmark-text-fill fs-5"></i>
+                  </div>
+                  <h5 className="modal-title fw-800 m-0" style={{ color: '#0a2540', fontSize: '1.25rem' }}>
+                    QuickLabour {activeTab === 'client' ? 'Client' : 'Worker'} Agreement & Policy
+                  </h5>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-close shadow-none" 
+                  style={{ fontSize: '0.9rem' }}
+                  onClick={() => setShowTermsModal(false)}
+                ></button>
+              </div>
+
+              <div className="modal-body px-4 py-3" style={{ fontSize: '0.9rem', color: '#475569', lineHeight: '1.6' }}>
+                <div className="alert alert-info border-0 rounded-16 bg-light text-dark mb-4 p-3" style={{ borderLeft: '4px solid #0d6efd !important' }}>
+                  <strong>Welcome to QuickLabour.</strong> By creating {activeTab === 'client' ? 'a Client' : 'a Worker'} account, you agree to the following terms:
+                </div>
+
+                {activeTab === 'client' && (
+                  <div className="mb-4">
+                    <h6 className="fw-800 text-dark mb-2 d-flex align-items-center gap-2">
+                      <span className="badge bg-primary rounded-pill" style={{ padding: '4px 8px', fontSize: '0.72rem' }}>Clients</span>
+                      For Clients
+                    </h6>
+                    <ul className="ps-3 mb-0" style={{ listStyleType: 'disc' }}>
+                      <li>Provide a correct address and contact number.</li>
+                      <li>Be available at the job location at the agreed time.</li>
+                      <li>Respond to worker calls and messages.</li>
+                      <li>Do not create fake or misleading job requests.</li>
+                      <li>Pay the agreed amount after work completion.</li>
+                      <li>Repeated no-shows may result in account suspension.</li>
+                    </ul>
+                  </div>
+                )}
+
+                {activeTab === 'worker' && (
+                  <div className="mb-4">
+                    <h6 className="fw-800 text-dark mb-2 d-flex align-items-center gap-2">
+                      <span className="badge bg-warning text-dark rounded-pill" style={{ padding: '4px 8px', fontSize: '0.72rem' }}>Workers</span>
+                      For Workers (Labours)
+                    </h6>
+                    <ul className="ps-3 mb-0" style={{ listStyleType: 'disc' }}>
+                      <li>Accept jobs only when you are available.</li>
+                      <li>Arrive at the job location on time.</li>
+                      <li>Maintain professional behavior with clients.</li>
+                      <li>Do not request extra payment outside the platform agreement.</li>
+                      <li>Repeated cancellations or no-shows may result in account suspension.</li>
+                      <li>Fraudulent activity may lead to permanent account termination.</li>
+                    </ul>
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <h6 className="fw-800 text-dark mb-1.5" style={{ fontSize: '0.95rem' }}>Verification</h6>
+                  <p className="mb-0">
+                    QuickLabour may verify user identities through phone numbers, documents, or other verification methods.
+                  </p>
+                </div>
+
+                <div className="mb-4">
+                  <h6 className="fw-800 text-dark mb-1.5" style={{ fontSize: '0.95rem' }}>Disputes</h6>
+                  <p className="mb-0">
+                    In case of a dispute, QuickLabour may review location data, communication records, photos, and job history to resolve the issue fairly.
+                  </p>
+                </div>
+
+                <div className="mb-4">
+                  <h6 className="fw-800 text-dark mb-1.5" style={{ fontSize: '0.95rem' }}>Safety</h6>
+                  <p className="mb-0">
+                    Users must not engage in illegal activities, harassment, threats, violence, or fraud. Serious violations may be reported to the appropriate authorities.
+                  </p>
+                </div>
+
+                <div className="mb-2">
+                  <h6 className="fw-800 text-dark mb-1.5" style={{ fontSize: '0.95rem' }}>Acceptance</h6>
+                  <p className="mb-0 fw-600 text-primary">
+                    By checking "I Agree" and creating an account, you confirm that you have read and accepted these terms and policies.
+                  </p>
+                </div>
+              </div>
+
+              <div className="modal-footer border-0 pt-0 pb-4 px-4 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div className="d-flex gap-2 flex-wrap">
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary btn-sm fw-700 px-3 py-1.5 rounded-10"
+                    onClick={() => {
+                      window.open('/privacy-policy', '_blank');
+                    }}
+                  >
+                    View Full Policy
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary btn-sm fw-700 px-3 py-1.5 rounded-10"
+                    onClick={() => {
+                      window.open('/refund-policy', '_blank');
+                    }}
+                  >
+                    Refund Policy
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary btn-sm fw-700 px-3 py-1.5 rounded-10"
+                    onClick={() => {
+                      window.open('/worker-conduct', '_blank');
+                    }}
+                  >
+                    Worker Conduct
+                  </button>
+                </div>
+
+                <div className="d-flex gap-2">
+                  <button 
+                    type="button" 
+                    className="btn btn-light btn-sm fw-700 px-3.5 py-1.5 rounded-10 border"
+                    onClick={() => setShowTermsModal(false)}
+                  >
+                    Close
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary btn-sm fw-800 px-4 py-1.5 rounded-10 text-white"
+                    onClick={() => {
+                      setAgreedToTerms(true);
+                      setShowTermsModal(false);
+                    }}
+                  >
+                    I Agree
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

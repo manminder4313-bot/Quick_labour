@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
-import User from './models/User.js';
+import User, { Client, Labour } from './models/User.js';
 import Review from './models/Review.js';
 import authRoutes from './routes/auth.js';
 import jobRoutes from './routes/jobs.js';
@@ -32,46 +32,11 @@ app.use(express.json({ limit: '10mb' }));
 // Seed Database with defaults if empty
 const seedDatabase = async () => {
   try {
-    // 1. Seed Tester Accounts if they don't exist
-    const clientExists = await User.findOne({ email: 'client@quicklabour.com' });
-    if (!clientExists) {
-      console.log('🌱 Seeding default Client tester profile...');
-      await User.create({
-        fullName: 'Raj Malhotra',
-        email: 'client@quicklabour.com',
-        password: 'client123', // Will be hashed via pre-save hook
-        plainPassword: 'client123',
-        phone: '+91 98765 43210',
-        address: 'Mumbai, Maharashtra',
-        role: 'client',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80',
-        idType: 'Aadhaar',
-        rating: 5.0,
-        jobsCompleted: 3,
-      });
-    }
+    // 1. Delete Demo Tester Accounts if they exist (except admin)
+    await Client.deleteMany({ email: { $in: ['client@quicklabour.com'] } });
+    await Labour.deleteMany({ email: { $in: ['worker@quicklabour.com', 'electrician@quicklabour.com', 'painter@quicklabour.com'] } });
 
-    const workerExists = await User.findOne({ email: 'worker@quicklabour.com' });
-    if (!workerExists) {
-      console.log('🌱 Seeding default Worker tester profile...');
-      await User.create({
-        fullName: 'Ramesh Kumar',
-        email: 'worker@quicklabour.com',
-        password: 'worker123', // Will be hashed via pre-save hook
-        plainPassword: 'worker123',
-        phone: '+91 99887 76655',
-        address: 'Bandra, Mumbai',
-        role: 'worker',
-        occupation: 'Professional Plumber',
-        avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80',
-        idType: 'Aadhaar',
-        rating: 4.9,
-        jobsCompleted: 18,
-        skills: ['Leakage Repair', 'PVC Pipes', 'Taps & Faucets'],
-        isOnline: true,
-      });
-    }
-
+    // 2. Seed Admin Tester Profile if it doesn't exist
     const adminExists = await User.findOne({ email: 'admin@quicklabour.com' });
     if (!adminExists) {
       console.log('🌱 Seeding default Admin tester profile...');
@@ -84,45 +49,6 @@ const seedDatabase = async () => {
         address: 'QuickLabour HQ, Amritsar',
         role: 'admin',
         permissions: ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins'],
-      });
-    }
-
-    // Seed some other workers for matching specialties
-    const electricianExists = await User.findOne({ email: 'electrician@quicklabour.com' });
-    if (!electricianExists) {
-      console.log('🌱 Seeding additional Worker specialties...');
-      await User.create({
-        fullName: 'Suresh Kumar',
-        email: 'electrician@quicklabour.com',
-        password: 'worker123',
-        plainPassword: 'worker123',
-        phone: '+91 98765 00112',
-        address: 'Andheri West, Mumbai',
-        role: 'worker',
-        occupation: 'Electrician',
-        avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&q=80',
-        skills: ['Electric Work', 'Wiring', 'Appliances'],
-        rating: 4.8,
-        jobsCompleted: 34,
-      });
-    }
-
-    const painterExists = await User.findOne({ email: 'painter@quicklabour.com' });
-    if (!painterExists) {
-      console.log('🌱 Seeding additional Worker specialties...');
-      await User.create({
-        fullName: 'Vijay Patel',
-        email: 'painter@quicklabour.com',
-        password: 'worker123',
-        plainPassword: 'worker123',
-        phone: '+91 99887 77665',
-        address: 'Thane, Mumbai',
-        role: 'worker',
-        occupation: 'Painter',
-        avatar: 'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=150&q=80',
-        skills: ['Painting', 'Wall Texture', 'Polishing'],
-        rating: 4.5,
-        jobsCompleted: 12,
       });
     }
 

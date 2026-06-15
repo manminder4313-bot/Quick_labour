@@ -67,11 +67,12 @@ router.post('/register', async (req, res) => {
         rating: user.rating,
         acceptedJobsCount: user.acceptedJobsCount,
         points: user.points,
+        walletBalance: user.walletBalance !== undefined ? user.walletBalance : 0,
         token: generateToken(user._id),
         permissions: user.role === 'admin' 
           ? (user.permissions && user.permissions.length > 0 
               ? user.permissions 
-              : (user.email === 'admin@quicklabour.com' 
+              : (user.email === 'admin' 
                   ? ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins']
                   : ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts']))
           : [],
@@ -88,15 +89,24 @@ router.post('/register', async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
 
   try {
-    const user = await User.findOne({
+    const baseQuery = {
       $or: [
         { email: email },
         { phone: email }
       ]
-    });
+    };
+
+    let user;
+    if (role) {
+      user = await User.findOne({ ...baseQuery, role });
+    }
+
+    if (!user) {
+      user = await User.findOne(baseQuery);
+    }
 
     if (user && (await user.matchPassword(password))) {
       res.json({
@@ -114,11 +124,12 @@ router.post('/login', async (req, res) => {
         rating: user.rating,
         acceptedJobsCount: user.acceptedJobsCount,
         points: user.points,
+        walletBalance: user.walletBalance !== undefined ? user.walletBalance : 0,
         token: generateToken(user._id),
         permissions: user.role === 'admin' 
           ? (user.permissions && user.permissions.length > 0 
               ? user.permissions 
-              : (user.email === 'admin@quicklabour.com' 
+              : (user.email === 'admin' 
                   ? ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins']
                   : ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts']))
           : [],
@@ -155,11 +166,12 @@ router.get('/profile', protect, async (req, res) => {
         jobsCompleted: user.jobsCompleted,
         acceptedJobsCount: user.acceptedJobsCount,
         points: user.points,
+        walletBalance: user.walletBalance !== undefined ? user.walletBalance : 0,
         skills: user.skills,
         permissions: user.role === 'admin' 
           ? (user.permissions && user.permissions.length > 0 
               ? user.permissions 
-              : (user.email === 'admin@quicklabour.com' 
+              : (user.email === 'admin' 
                   ? ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins']
                   : ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts']))
           : [],
@@ -210,6 +222,7 @@ router.put('/profile', protect, async (req, res) => {
         jobsCompleted: updatedUser.jobsCompleted,
         acceptedJobsCount: updatedUser.acceptedJobsCount,
         points: updatedUser.points,
+        walletBalance: updatedUser.walletBalance !== undefined ? updatedUser.walletBalance : 0,
         skills: updatedUser.skills
       });
     } else {
@@ -323,7 +336,179 @@ router.post('/subscribe', protect, async (req, res) => {
         jobsCompleted: worker.jobsCompleted,
         acceptedJobsCount: worker.acceptedJobsCount,
         points: worker.points,
+        walletBalance: worker.walletBalance !== undefined ? worker.walletBalance : 0,
         skills: worker.skills,
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Add money to wallet
+// @route   POST /api/auth/wallet/add
+// @access  Private
+router.post('/wallet/add', protect, async (req, res) => {
+  const { amount, method } = req.body;
+
+  if (!amount || isNaN(amount) || Number(amount) <= 0) {
+    return res.status(400).json({ message: 'Invalid amount specified' });
+  }
+
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.walletBalance = (user.walletBalance || 0) + Number(amount);
+    await user.save();
+
+    res.json({
+      message: `Successfully added ₹${amount} to your wallet via ${method.toUpperCase()}!`,
+      walletBalance: user.walletBalance,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        address: user.address,
+        role: user.role,
+        occupation: user.occupation,
+        avatar: user.avatar,
+        latitude: user.latitude,
+        longitude: user.longitude,
+        isOnline: user.isOnline,
+        rating: user.rating,
+        acceptedJobsCount: user.acceptedJobsCount,
+        points: user.points,
+        walletBalance: user.walletBalance,
+        skills: user.skills
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Transfer money from client to worker (Pay Labour Fee via QR)
+// @route   POST /api/auth/wallet/transfer
+// @access  Private (Client only)
+router.post('/wallet/transfer', protect, async (req, res) => {
+  const { workerId, amount } = req.body;
+
+  if (!workerId) {
+    return res.status(400).json({ message: 'Worker ID is required' });
+  }
+  if (!amount || isNaN(amount) || Number(amount) <= 0) {
+    return res.status(400).json({ message: 'Invalid amount specified' });
+  }
+
+  try {
+    const client = await User.findById(req.user._id);
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+    if (client.role !== 'client') {
+      return res.status(403).json({ message: 'Only clients can transfer wallet balances.' });
+    }
+
+    if ((client.walletBalance || 0) < Number(amount)) {
+      return res.status(400).json({ message: 'Insufficient wallet balance. Please add money to your wallet first.' });
+    }
+
+    const worker = await User.findById(workerId);
+    if (!worker) {
+      return res.status(404).json({ message: 'Labour / Worker profile not found.' });
+    }
+    if (worker.role !== 'worker') {
+      return res.status(400).json({ message: 'Recipient is not a worker profile.' });
+    }
+
+    // Process Transfer
+    client.walletBalance = (client.walletBalance || 0) - Number(amount);
+    worker.walletBalance = (worker.walletBalance || 0) + Number(amount);
+
+    await client.save();
+    await worker.save();
+
+    res.json({
+      success: true,
+      message: `Successfully paid ₹${amount} to ${worker.fullName}!`,
+      walletBalance: client.walletBalance,
+      clientWalletBalance: client.walletBalance,
+      workerName: worker.fullName
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Recharge points using wallet balance
+// @route   POST /api/auth/recharge-points-wallet
+// @access  Private (Worker only)
+router.post('/recharge-points-wallet', protect, async (req, res) => {
+  const { planType } = req.body;
+
+  if (req.user.role !== 'worker') {
+    return res.status(403).json({ message: 'Only workers can recharge points.' });
+  }
+
+  const prices = {
+    basic: 99,
+    standard: 199,
+    premium: 499,
+  };
+
+  const pointsToAdd = {
+    basic: 90,
+    standard: 190,
+    premium: 460,
+  };
+
+  const cost = prices[planType];
+  const points = pointsToAdd[planType];
+
+  if (!cost) {
+    return res.status(400).json({ message: 'Invalid points plan type selected' });
+  }
+
+  try {
+    const worker = await User.findById(req.user._id);
+    if (!worker) {
+      return res.status(404).json({ message: 'Worker not found' });
+    }
+
+    if ((worker.walletBalance || 0) < cost) {
+      return res.status(400).json({ message: 'Insufficient wallet balance. Please add money to your wallet first.' });
+    }
+
+    worker.walletBalance = (worker.walletBalance || 0) - cost;
+    worker.points = (worker.points || 0) + points;
+    await worker.save();
+
+    res.json({
+      success: true,
+      message: `Successfully recharged ${planType} plan! Added ${points} points.`,
+      walletBalance: worker.walletBalance,
+      updatedPoints: worker.points,
+      user: {
+        _id: worker._id,
+        fullName: worker.fullName,
+        email: worker.email,
+        phone: worker.phone,
+        address: worker.address,
+        role: worker.role,
+        occupation: worker.occupation,
+        avatar: worker.avatar,
+        latitude: worker.latitude,
+        longitude: worker.longitude,
+        isOnline: worker.isOnline,
+        rating: worker.rating,
+        acceptedJobsCount: worker.acceptedJobsCount,
+        points: worker.points,
+        walletBalance: worker.walletBalance,
+        skills: worker.skills
       }
     });
   } catch (error) {

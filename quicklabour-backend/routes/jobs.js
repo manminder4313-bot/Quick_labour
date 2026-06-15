@@ -456,7 +456,7 @@ router.put('/:id/complete', protect, async (req, res) => {
   if (req.user.role === 'worker') {
     return res.status(403).json({ message: 'Workers are not authorized to complete jobs.' });
   }
-  const { rating, reviewText } = req.body;
+  const { rating, reviewText, paymentMode, onlineMethod } = req.body;
 
   try {
     const job = await Job.findById(req.params.id);
@@ -473,6 +473,21 @@ router.put('/:id/complete', protect, async (req, res) => {
       return res.status(400).json({ message: 'No worker is hired for this job yet' });
     }
 
+    const amount = job.money || 0;
+
+    // Handle Client Wallet Deduction if Online via QuickLabour Wallet
+    if (paymentMode === 'online' && onlineMethod === 'wallet') {
+      const clientUser = await User.findById(req.user._id);
+      if (!clientUser) {
+        return res.status(404).json({ message: 'Client profile not found' });
+      }
+      if ((clientUser.walletBalance || 0) < amount) {
+        return res.status(400).json({ message: `Insufficient wallet balance (₹${clientUser.walletBalance || 0}). Please add funds or use another online method.` });
+      }
+      clientUser.walletBalance = (clientUser.walletBalance || 0) - amount;
+      await clientUser.save();
+    }
+
     // 1. Update job status to 'Completed'
     job.status = 'Completed';
     await job.save();
@@ -480,6 +495,10 @@ router.put('/:id/complete', protect, async (req, res) => {
     // 2. Fetch worker user
     const worker = await User.findById(job.hiredWorker);
     if (worker) {
+      // Credit worker wallet if paid online
+      if (paymentMode === 'online') {
+        worker.walletBalance = (worker.walletBalance || 0) + amount;
+      }
       // Ensure rating is bounded correctly within 1 to 5 stars
       let ratingVal = Number(rating) || 5;
       if (ratingVal > 5) ratingVal = 5;

@@ -2,6 +2,48 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
 import ChatWidget from '../components/ChatWidget';
 
+const CountdownTimer = ({ job }) => {
+  const [timeLeft, setTimeLeft] = useState('15:00');
+
+  useEffect(() => {
+    const storageKey = `job_accept_time_${job._id}`;
+    let startTimeStr = localStorage.getItem(storageKey);
+    
+    if (!startTimeStr) {
+      const initialTime = job.updatedAt ? new Date(job.updatedAt).getTime() : Date.now();
+      startTimeStr = initialTime.toString();
+      localStorage.setItem(storageKey, startTimeStr);
+    }
+
+    const startTimestamp = parseInt(startTimeStr, 10);
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const elapsedMs = now - startTimestamp;
+      const totalMs = 15 * 60 * 1000;
+      const remainingMs = totalMs - elapsedMs;
+
+      if (remainingMs <= 0) {
+        setTimeLeft('00:00');
+        return;
+      }
+
+      const minutes = Math.floor(remainingMs / 60000);
+      const seconds = Math.floor((remainingMs % 60000) / 1000);
+      
+      const pad = (num) => num.toString().padStart(2, '0');
+      setTimeLeft(`${pad(minutes)}:${pad(seconds)}`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [job]);
+
+  return <strong>{timeLeft}</strong>;
+};
+
 const WorkerDashboard = () => {
   const getPointsCost = (money) => {
     const cleanStr = String(money || '').replace(/[^\d.]/g, '');
@@ -22,8 +64,18 @@ const WorkerDashboard = () => {
   const [hiredJobs, setHiredJobs] = useState([]);
   const [availableJobs, setAvailableJobs] = useState([]);
   const [isOnline, setIsOnline] = useState(sessionStorage.getItem('userOnlineStatus') === 'true');
-  const [completedCount, setCompletedCount] = useState(Number(sessionStorage.getItem('userJobsCompleted')) || 18);
-  const [workerRating, setWorkerRating] = useState(sessionStorage.getItem('userRating') || '4.9');
+  const [completedCount, setCompletedCount] = useState(() => {
+    const val = sessionStorage.getItem('userJobsCompleted');
+    if (val !== null) return Number(val);
+    const email = sessionStorage.getItem('userEmail');
+    return email === 'worker@quicklabour.com' ? 18 : 0;
+  });
+  const [workerRating, setWorkerRating] = useState(() => {
+    const val = sessionStorage.getItem('userRating');
+    if (val !== null) return val;
+    const email = sessionStorage.getItem('userEmail');
+    return email === 'worker@quicklabour.com' ? '4.9' : '0.0';
+  });
   const [actionAlert, setActionAlert] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active', 'invitations', or 'past'
 
@@ -31,6 +83,15 @@ const WorkerDashboard = () => {
   const [workerPoints, setWorkerPoints] = useState(Number(sessionStorage.getItem('userPoints')) || 0);
   const [acceptedJobs, setAcceptedJobs] = useState(Number(sessionStorage.getItem('userAcceptedJobs')) || 0);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(Number(sessionStorage.getItem('userWalletBalance') || 0));
+  const [showAddWalletModal, setShowAddWalletModal] = useState(false);
+  const [showQrCodeModal, setShowQrCodeModal] = useState(false);
+  const [walletAmount, setWalletAmount] = useState('');
+  const [walletMethod, setWalletMethod] = useState('upi'); // 'upi', 'card', 'netbanking'
+  const [upiId, setUpiId] = useState('');
+  const [netBank, setNetBank] = useState('sbi');
+  const [isAddingMoney, setIsAddingMoney] = useState(false);
+  const [isPayingWithWallet, setIsPayingWithWallet] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('basic'); // 'basic', 'standard', 'premium'
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -53,6 +114,126 @@ const WorkerDashboard = () => {
   const [mapJob, setMapJob] = useState(null);
   const [activeNotification, setActiveNotification] = useState(null);
   const prevAvailableIds = useRef([]);
+
+  // Safety & Dispute features states
+  const [jobSubStatuses, setJobSubStatuses] = useState(
+    JSON.parse(localStorage.getItem('jobSubStatuses') || '{}')
+  );
+  const [disputes, setDisputes] = useState(
+    JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]')
+  );
+  const [noShowJob, setNoShowJob] = useState(null);
+  const [showNoShowModal, setShowNoShowModal] = useState(false);
+  const [selfieProof, setSelfieProof] = useState('');
+  const [gpsProof, setGpsProof] = useState('');
+  const [showSosModal, setShowSosModal] = useState(false);
+  const [sosAlertTriggered, setSosAlertTriggered] = useState(false);
+  const [showWorkerDisputeModal, setShowWorkerDisputeModal] = useState(false);
+  const [disputeJob, setDisputeJob] = useState(null);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [disputePhoto, setDisputePhoto] = useState('');
+  const [disputeCallLog, setDisputeCallLog] = useState('');
+
+  // Sync disputes regularly with localStorage
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setDisputes(JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]'));
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const updateJobSubStatus = (jobId, subStatus) => {
+    const updated = { ...jobSubStatuses, [jobId]: subStatus };
+    setJobSubStatuses(updated);
+    localStorage.setItem('jobSubStatuses', JSON.stringify(updated));
+    setActionAlert(`🟢 Job status updated to: ${subStatus}`);
+  };
+
+  const handleOpenNoShowModal = (job) => {
+    setNoShowJob(job);
+    setSelfieProof('');
+    setGpsProof('');
+    setShowNoShowModal(true);
+  };
+
+  const handleSubmitNoShowClaim = () => {
+    if (!selfieProof) {
+      alert("Please upload a Selfie Proof to confirm your presence at the location.");
+      return;
+    }
+    // Credit ₹50 visit compensation to worker wallet
+    const updatedBalance = walletBalance + 50;
+    setWalletBalance(updatedBalance);
+    sessionStorage.setItem('userWalletBalance', updatedBalance);
+    
+    // Add ₹50 penalty to client
+    const clientPenalties = JSON.parse(localStorage.getItem('quicklabour_client_penalties') || '{}');
+    const clientId = noShowJob.client?._id || noShowJob.client;
+    clientPenalties[clientId] = (clientPenalties[clientId] || 0) + 50;
+    localStorage.setItem('quicklabour_client_penalties', JSON.stringify(clientPenalties));
+
+    // Deduct client trust score
+    const clientTrustScores = JSON.parse(localStorage.getItem('quicklabour_client_trust_scores') || '{}');
+    const currentScore = clientTrustScores[clientId] !== undefined ? clientTrustScores[clientId] : 88;
+    clientTrustScores[clientId] = Math.max(0, currentScore - 10);
+    localStorage.setItem('quicklabour_client_trust_scores', JSON.stringify(clientTrustScores));
+
+    // Set job status to Rejected locally
+    setHiredJobs(prev => prev.map(j => j._id === noShowJob._id ? { ...j, status: 'Rejected' } : j));
+    
+    setActionAlert("✅ Visit Compensation of ₹50 added to your wallet! Client has been penalized.");
+    setShowNoShowModal(false);
+    setNoShowJob(null);
+  };
+
+  const handleTriggerSOS = () => {
+    setSosAlertTriggered(true);
+    setTimeout(() => {
+      setShowSosModal(false);
+      setSosAlertTriggered(false);
+      alert("🚨 SOS Alert sent successfully to Emergency Contacts & QuickLabour Safety desk.");
+    }, 2000);
+  };
+
+  const handleOpenWorkerDispute = (job) => {
+    setDisputeJob(job);
+    setDisputeReason('');
+    setDisputePhoto('');
+    setDisputeCallLog('');
+    setShowWorkerDisputeModal(true);
+  };
+
+  const handleSubmitWorkerDispute = () => {
+    if (!disputeReason) {
+      alert("Please provide the reason for your dispute.");
+      return;
+    }
+    const newDispute = {
+      _id: `disp_${Date.now()}`,
+      jobId: disputeJob._id,
+      jobTitle: disputeJob.title,
+      clientName: disputeJob.client?.fullName || 'Client',
+      workerName: profileName,
+      submittedBy: 'worker',
+      reason: disputeReason,
+      photo: disputePhoto || 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=150&q=80',
+      callLog: disputeCallLog || 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=150&q=80',
+      gpsLocation: `${workerLat || '19.0760'}° N, ${workerLng || '72.8777'}° E`,
+      status: 'Pending',
+      createdAt: new Date().toLocaleString()
+    };
+    const updatedDisputes = [newDispute, ...disputes];
+    setDisputes(updatedDisputes);
+    localStorage.setItem('quicklabour_disputes', JSON.stringify(updatedDisputes));
+    
+    // Decrease worker trust score slightly for filing dispute
+    const currentScore = Number(localStorage.getItem('quicklabour_worker_trust_score') || 95);
+    localStorage.setItem('quicklabour_worker_trust_score', Math.max(70, currentScore - 2));
+
+    setShowWorkerDisputeModal(false);
+    alert("⚖️ Dispute registered successfully! QuickLabour Support will review photo evidence, GPS location, and call logs.");
+  };
 
   // Edit Profile Form States
   const [showEditModal, setShowEditModal] = useState(false);
@@ -174,6 +355,34 @@ const WorkerDashboard = () => {
     setShowMapModal(true);
   };
 
+  const playChime = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      const now = audioCtx.currentTime;
+      const playTone = (freq, startOffset, duration, volume) => {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + startOffset);
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.setValueAtTime(volume, now + startOffset);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + startOffset + duration);
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start(now + startOffset);
+        osc.stop(now + startOffset + duration);
+      };
+      playTone(784, 0, 0.4, 0.15);      // G5
+      playTone(1046.5, 0.08, 0.4, 0.15); // C6
+      playTone(1318.5, 0.16, 0.5, 0.15); // E6
+    } catch (err) {
+      console.warn("Failed to play synthesized notification chime:", err);
+    }
+  };
+
   const fetchJobs = async () => {
     try {
       const data = await api.getJobs();
@@ -185,14 +394,7 @@ const WorkerDashboard = () => {
         job => !prevAvailableIds.current.includes(job._id)
       );
       if (newJobs.length > 0 && isOnline) {
-        // Play clean soft notification sound chime!
-        try {
-          const chime = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-84.wav');
-          chime.volume = 0.4;
-          chime.play().catch(() => {});
-        } catch (e) {
-          console.error(e);
-        }
+        playChime();
         
         // Trigger the beautiful floating card notification for the latest new job invitation
         const latestJob = newJobs[0];
@@ -247,6 +449,10 @@ const WorkerDashboard = () => {
       setWorkerRating(user.rating !== undefined ? user.rating : '4.9');
       setWorkerPoints(user.points !== undefined ? user.points : 0);
       setAcceptedJobs(user.acceptedJobsCount !== undefined ? user.acceptedJobsCount : 0);
+      if (user.walletBalance !== undefined) {
+        setWalletBalance(user.walletBalance);
+        sessionStorage.setItem('userWalletBalance', user.walletBalance);
+      }
 
       if (user.fullName) sessionStorage.setItem('userName', user.fullName);
       if (user.phone) sessionStorage.setItem('userPhone', user.phone);
@@ -295,19 +501,34 @@ const WorkerDashboard = () => {
   const pastHiredJobs = hiredJobs.filter(job => job.status === 'Completed');
 
   // Calculate dynamic monthly earnings based on actual job budget and fallback base rate
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0 = Jan, 5 = June
+  const isDemoMonth = (currentYear === 2026 && currentMonth === 5);
+
   const completedHiredJobs = hiredJobs.filter(j => j.status === 'Completed');
-  const actualEarnings = completedHiredJobs.reduce((sum, job) => sum + (job.money || 0), 0);
-  const baseMockEarnings = (completedCount > completedHiredJobs.length)
-    ? (completedCount - completedHiredJobs.length) * 880
+  
+  // Only include actual jobs completed in the current calendar month
+  const completedThisMonth = hiredJobs.filter(j => {
+    if (j.status !== 'Completed') return false;
+    const date = new Date(j.updatedAt || j.createdAt);
+    return date.getFullYear() === currentYear && date.getMonth() === currentMonth;
+  });
+
+  const actualEarnings = completedThisMonth.reduce((sum, job) => sum + (job.money || 0), 0);
+  const baseMockEarnings = isDemoMonth
+    ? ((completedCount > completedHiredJobs.length) ? (completedCount - completedHiredJobs.length) * 880 : 0)
     : 0;
   const totalEarnings = baseMockEarnings + actualEarnings;
+
+  const displayRating = (sessionStorage.getItem('userEmail') === 'worker@quicklabour.com' || completedCount > 0) ? workerRating : '0.0';
 
   // Calculate dynamic stats
   const stats = {
     completedJobs: completedCount,
     monthlyEarnings: `₹${totalEarnings.toLocaleString('en-IN')}`,
     activeJobsToday: hiredJobs.filter(j => j.status === 'Accepted').length,
-    rating: workerRating
+    rating: displayRating
   };
 
   const handleAcceptJob = async (id, clientName, money) => {
@@ -356,6 +577,48 @@ const WorkerDashboard = () => {
   const handleCardCvcChange = (e) => {
     const value = e.target.value.replace(/\D/g, '');
     setCardCvc(value.substring(0, 4));
+  };
+
+  const handleAddMoneySubmit = async (e) => {
+    e.preventDefault();
+    if (!walletAmount || isNaN(walletAmount) || Number(walletAmount) <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+    setIsAddingMoney(true);
+    try {
+      const res = await api.addWalletMoney(Number(walletAmount), walletMethod);
+      setWalletBalance(res.walletBalance);
+      setActionAlert(`🎉 Successfully recharged ₹${walletAmount} to your wallet!`);
+      setShowAddWalletModal(false);
+      setWalletAmount('');
+      setTimeout(() => setActionAlert(''), 6000);
+    } catch (err) {
+      alert("Failed to add money: " + err.message);
+    } finally {
+      setIsAddingMoney(false);
+    }
+  };
+
+  const handleRechargePointsWithWallet = async (planType) => {
+    setIsPayingWithWallet(true);
+    try {
+      const res = await api.rechargePointsWallet(planType);
+      setWorkerPoints(res.updatedPoints || 0);
+      setWalletBalance(res.walletBalance || 0);
+      setPaymentSuccess(true);
+      setActionAlert(`🎉 Successfully recharged points using wallet balance! Added ${res.pointsAdded} points.`);
+      
+      setTimeout(() => {
+        setPaymentSuccess(false);
+        setShowSubscriptionModal(false);
+        setActionAlert('');
+      }, 3500);
+    } catch (err) {
+      alert("Recharge failed: " + err.message);
+    } finally {
+      setIsPayingWithWallet(false);
+    }
   };
 
   const handlePurchaseSubscription = async (e) => {
@@ -625,7 +888,7 @@ const WorkerDashboard = () => {
 
           {/* Stats Row */}
           <div className="row g-4 mb-5">
-            <div className="col-xl col-md-4 col-sm-6">
+            <div className="col-xl-4 col-md-6 col-sm-12">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper green">
                   <i className="bi bi-patch-check-fill"></i>
@@ -636,7 +899,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl col-md-4 col-sm-6">
+            <div className="col-xl-4 col-md-6 col-sm-12">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper blue">
                   <i className="bi bi-cash-stack"></i>
@@ -647,7 +910,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl col-md-4 col-sm-6">
+            <div className="col-xl-4 col-md-6 col-sm-12">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper purple">
                   <i className="bi bi-briefcase-fill"></i>
@@ -658,7 +921,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl col-md-4 col-sm-6">
+            <div className="col-xl-4 col-md-6 col-sm-12">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper orange">
                   <i className="bi bi-star-fill"></i>
@@ -669,7 +932,18 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl col-md-4 col-sm-6">
+            <div className="col-xl-4 col-md-6 col-sm-12">
+              <div className="dashboard-stat-card cursor-pointer" onClick={() => setShowQrCodeModal(true)} style={{ cursor: 'pointer' }}>
+                <div className="stat-icon-wrapper purple">
+                  <i className="bi bi-wallet-fill"></i>
+                </div>
+                <div>
+                  <div className="stat-number">₹{Number(walletBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                  <div className="stat-label">Wallet Balance (QR)</div>
+                </div>
+              </div>
+            </div>
+            <div className="col-xl-4 col-md-6 col-sm-12">
               <div 
                 className="dashboard-stat-card position-relative overflow-hidden cursor-pointer d-flex align-items-center justify-content-between gap-2" 
                 onClick={() => setShowSubscriptionModal(true)} 
@@ -705,10 +979,10 @@ const WorkerDashboard = () => {
                 {/* Circle orange plus button representing add/adding points */}
                 <div 
                   className="d-flex align-items-center justify-content-center bg-warning bg-opacity-10 rounded-circle shadow-sm" 
-                  style={{ width: '32px', height: '32px', border: '1px solid rgba(245, 166, 35, 0.3)', transition: 'all 0.2s', flexShrink: 0 }}
+                  style={{ width: '24px', height: '24px', border: '1px solid rgba(245, 166, 35, 0.3)', transition: 'all 0.2s', flexShrink: 0 }}
                   title="Add more points"
                 >
-                  <i className="bi bi-plus-lg fw-900" style={{ color: '#f5a623', fontSize: '0.85rem' }}></i>
+                  <i className="bi bi-plus-lg fw-900" style={{ color: '#f5a623', fontSize: '0.7rem' }}></i>
                 </div>
               </div>
             </div>
@@ -783,6 +1057,26 @@ const WorkerDashboard = () => {
                       <div className="position-absolute bottom-0 start-0 end-0" style={{ height: '3px', background: '#0d6efd', borderRadius: '3px' }}></div>
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('disputes')}
+                    className="pb-2 fw-700 position-relative border-0 bg-transparent text-start px-0"
+                    style={{
+                      color: activeTab === 'disputes' ? '#0d6efd' : '#64748b',
+                      fontSize: '1rem',
+                      transition: 'all 0.3s ease',
+                      borderRadius: 0
+                    }}
+                  >
+                    ⚖️ Disputes Hub
+                    <span className="badge bg-danger bg-opacity-10 text-danger ms-2 rounded-pill" style={{ fontSize: '0.75rem' }}>
+                      {disputes.length}
+                    </span>
+                    {activeTab === 'disputes' && (
+                      <div className="position-absolute bottom-0 start-0 end-0" style={{ height: '3px', background: '#0d6efd', borderRadius: '3px' }}></div>
+                    )}
+                  </button>
                 </div>
 
                 {/* Active Hired Jobs */}
@@ -834,6 +1128,86 @@ const WorkerDashboard = () => {
                               </div>
                             </div>
                           )}
+
+                          {/* Cancellation penalty policy progress trackers */}
+                          <div className="mt-3 p-3 bg-light rounded-16 border">
+                            <div className="d-flex justify-content-between align-items-center mb-2">
+                              <span className="small fw-700 text-muted">📍 Job Travel Status</span>
+                              <span className={`badge ${
+                                (jobSubStatuses[job._id] || 'Accepted') === 'Arrived' ? 'bg-success' : 'bg-warning'
+                              } text-white`}>
+                                {jobSubStatuses[job._id] || 'Accepted'}
+                              </span>
+                            </div>
+
+                            {/* Sub-status specific view */}
+                            {(jobSubStatuses[job._id] || 'Accepted') === 'Accepted' && (
+                              <div>
+                                <div className="alert alert-warning py-2 px-3 rounded-12 mb-2 m-0" style={{ fontSize: '0.78rem' }}>
+                                  ⚠️ <strong>15-Minute Acceptance Rule:</strong> Please confirm your travel. Failure to confirm or arrive on time can trigger warnings, ₹100 platform penalty, or 7-day suspension.
+                                </div>
+                                <div className="d-flex align-items-center justify-content-between mt-2">
+                                  <span className="small text-muted"><i className="bi bi-clock-history me-1"></i>Confirm travel in: <CountdownTimer job={job} /></span>
+                                  <button 
+                                    onClick={() => updateJobSubStatus(job._id, 'On the Way')}
+                                    className="btn btn-sm btn-primary fw-bold px-3 py-1 rounded-10"
+                                    style={{ fontSize: '0.78rem' }}
+                                  >
+                                    🚀 Start Travel (On The Way)
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {(jobSubStatuses[job._id] || 'Accepted') === 'On the Way' && (
+                              <div>
+                                <div className="alert alert-info py-2 px-3 rounded-12 mb-2 m-0" style={{ fontSize: '0.78rem' }}>
+                                  📡 <strong>Live Location Sharing Active:</strong> Client is tracking your real-time coordinates. Keep moving! Auto-cancel will trigger if no movement is detected for 30 minutes.
+                                </div>
+                                <div className="d-flex align-items-center justify-content-between mt-2">
+                                  <span className="small text-success"><i className="bi bi-geo-alt-fill animate-bounce me-1"></i>Sharing coordinates...</span>
+                                  <button 
+                                    onClick={() => updateJobSubStatus(job._id, 'Arrived')}
+                                    className="btn btn-sm btn-success fw-bold px-3 py-1 rounded-10"
+                                    style={{ fontSize: '0.78rem' }}
+                                  >
+                                    📍 Confirm Arrival
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {(jobSubStatuses[job._id] || 'Accepted') === 'Arrived' && (
+                              <div>
+                                <div className="alert alert-success py-2 px-3 rounded-12 mb-2 m-0" style={{ fontSize: '0.78rem' }}>
+                                  🎯 <strong>You Have Arrived:</strong> Please coordinate with the client to begin the work. Once completed, request the client to mark the job complete from their dashboard.
+                                </div>
+                                <div className="d-flex gap-2 mt-2 justify-content-end">
+                                  <button 
+                                    onClick={() => handleOpenNoShowModal(job)}
+                                    className="btn btn-sm btn-outline-danger fw-bold px-3 py-1 rounded-10"
+                                    style={{ fontSize: '0.78rem' }}
+                                  >
+                                    ⚠️ Client Not Available / No-Show
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      api.put(`/jobs/${job._id}/status`, { status: 'Completed' })
+                                        .then(() => {
+                                          setHiredJobs(hiredJobs.map(j => j._id === job._id ? { ...j, status: 'Completed' } : j));
+                                          setActionAlert("✅ Job marked completed! Chat logs cleared.");
+                                        })
+                                        .catch(err => alert("Error completing job: " + err.message));
+                                    }}
+                                    className="btn btn-sm btn-success fw-bold px-3 py-1 rounded-10"
+                                    style={{ fontSize: '0.78rem' }}
+                                  >
+                                    ✅ Complete Work
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -979,7 +1353,16 @@ const WorkerDashboard = () => {
 
                               <div className="text-end">
                                 <div className="fw-800 text-success mb-1" style={{ fontSize: '1.05rem' }}>₹{job.money || 0} Paid</div>
-                                <span className="badge bg-success bg-opacity-10 text-success fw-700 rounded-pill px-3 py-1">Closed & Completed</span>
+                                <div className="d-flex flex-column align-items-end gap-2">
+                                  <span className="badge bg-success bg-opacity-10 text-success fw-700 rounded-pill px-3 py-1">Closed & Completed</span>
+                                  <button
+                                    onClick={() => handleOpenWorkerDispute(job)}
+                                    className="btn btn-sm btn-outline-danger py-1 px-2 border-1 rounded-12"
+                                    style={{ fontSize: '0.72rem', fontWeight: 700 }}
+                                  >
+                                    ⚠️ File Dispute
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           )}
@@ -991,6 +1374,58 @@ const WorkerDashboard = () => {
                       <i className="bi bi-clock-history fs-1 mb-3 text-muted opacity-50 d-block"></i>
                       <h6 className="fw-700">No completed jobs history</h6>
                       <p className="small mb-0">Your finished projects will show up here after clients mark them complete.</p>
+                    </div>
+                  )
+                )}
+
+                {activeTab === 'disputes' && (
+                  disputes.length > 0 ? (
+                    <div className="dashboard-scroll-container">
+                      <div className="alert alert-info py-2 px-3 rounded-12 mb-3" style={{ fontSize: '0.82rem' }}>
+                        ⚖️ <strong>QuickLabour Dispute Resolution Policy:</strong> Our support desk reviews GPS location logs, phone call screenshots, and upload photos to resolve disputes. Decisions are made in 24-48 hours.
+                      </div>
+                      {disputes.map(disp => (
+                        <div key={disp._id} className="dashboard-list-item d-flex flex-column align-items-stretch py-3 border-bottom">
+                          <div className="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                              <span className="badge bg-danger bg-opacity-10 text-danger small fw-700" style={{ fontSize: '0.7rem' }}>DISPUTE CASE</span>
+                              <h6 className="fw-700 mb-1 mt-1">{disp.jobTitle}</h6>
+                              <span className="text-muted small fw-600">
+                                <i className="bi bi-clock me-1"></i>Filed on {disp.createdAt}
+                              </span>
+                            </div>
+                            <span className={`badge ${
+                              disp.status === 'Resolved' ? 'bg-success' :
+                              disp.status === 'Under Review' ? 'bg-primary' : 'bg-warning'
+                            } text-white`}>
+                              {disp.status}
+                            </span>
+                          </div>
+                          <div className="bg-light p-3 rounded-16 border mt-2">
+                            <p className="small mb-2 text-dark"><strong>Reason:</strong> {disp.reason}</p>
+                            <div className="d-flex gap-3 flex-wrap">
+                              <div>
+                                <span className="d-block small text-muted fw-700 mb-1">Selfie/Proof Photo</span>
+                                <img src={disp.photo} alt="Selfie Proof" className="rounded-12 border shadow-sm" style={{ width: '60px', height: '60px', objectFit: 'cover' }} />
+                              </div>
+                              <div>
+                                <span className="d-block small text-muted fw-700 mb-1">Call Logs</span>
+                                <img src={disp.callLog} alt="Call Logs Proof" className="rounded-12 border shadow-sm" style={{ width: '60px', height: '60px', objectFit: 'cover' }} />
+                              </div>
+                              <div className="text-start">
+                                <span className="d-block small text-muted fw-700 mb-1">GPS Location Recorded</span>
+                                <span className="badge bg-secondary text-white font-monospace">{disp.gpsLocation}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-5 text-muted">
+                      <i className="bi bi-shield-check fs-1 mb-3 text-success opacity-75 d-block"></i>
+                      <h6 className="fw-700">No active disputes</h6>
+                      <p className="small mb-0">Your account standing is clean and 100% compliant!</p>
                     </div>
                   )
                 )}
@@ -1015,7 +1450,57 @@ const WorkerDashboard = () => {
                   <li className="py-2 d-flex align-items-center gap-2"><i className="bi bi-envelope text-muted"></i> {sessionStorage.getItem('userEmail') || 'worker@quicklabour.com'}</li>
                   <li className="py-2 d-flex align-items-center gap-2"><i className="bi bi-geo-alt text-muted"></i> {profileAddress}</li>
                   <li className="py-2 d-flex align-items-center gap-2"><i className="bi bi-telephone text-muted"></i> {profilePhone}</li>
+                  <li className="py-2 d-flex align-items-center gap-2">
+                    <i className="bi bi-calendar-check text-muted"></i> 
+                    <strong>Joined:</strong> {sessionStorage.getItem('userCreatedAt') 
+                      ? new Date(sessionStorage.getItem('userCreatedAt')).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : 'June 15, 2026'}
+                  </li>
+                  <li className="py-2 d-flex align-items-center gap-2">
+                    <i className="bi bi-briefcase text-muted"></i> 
+                    <strong>Experience:</strong> {sessionStorage.getItem('userEmail') === 'worker@quicklabour.com' ? '5+ Years (Verified)' : 'Newly Joined (Entry Level)'}
+                  </li>
                 </ul>
+
+                {/* Trust Score & Verification badge */}
+                <div className="mt-3 p-3 bg-light rounded-16 border text-start mb-3">
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <span className="small fw-700 text-muted">🛡️ Safety Trust Score</span>
+                    <span className="badge bg-success text-white fw-800">
+                      {localStorage.getItem('quicklabour_worker_trust_score') || 95} / 100
+                    </span>
+                  </div>
+                  <div className="progress mb-2" style={{ height: '6px' }}>
+                    <div 
+                      className="progress-bar bg-success" 
+                      role="progressbar" 
+                      style={{ width: `${localStorage.getItem('quicklabour_worker_trust_score') || 95}%` }}
+                    ></div>
+                  </div>
+                  <div className="d-flex justify-content-between text-muted" style={{ fontSize: '0.72rem' }}>
+                    <span>On-time: 98%</span>
+                    <span>Cancellations: 0</span>
+                  </div>
+                </div>
+
+                <div className="mt-2.5 p-3 bg-light rounded-16 border text-start mb-3">
+                  <span className="small fw-700 text-muted d-block mb-2">✅ Verification Badge</span>
+                  <div className="d-flex flex-wrap gap-2">
+                    <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-20 d-flex align-items-center gap-1 small" style={{ fontSize: '0.7rem' }}>
+                      <i className="bi bi-check-circle-fill"></i> Phone OTP
+                    </span>
+                    <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-20 d-flex align-items-center gap-1 small" style={{ fontSize: '0.7rem' }}>
+                      <i className="bi bi-check-circle-fill"></i> Aadhaar Verified
+                    </span>
+                    <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-20 d-flex align-items-center gap-1 small" style={{ fontSize: '0.7rem' }}>
+                      <i className="bi bi-check-circle-fill"></i> Profile Photo
+                    </span>
+                    <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-20 d-flex align-items-center gap-1 small" style={{ fontSize: '0.7rem' }}>
+                      <i className="bi bi-check-circle-fill"></i> Skill Checked
+                    </span>
+                  </div>
+                </div>
+
                 <button
                   onClick={handleOpenEditModal}
                   className="btn w-100 mt-2 d-flex align-items-center justify-content-center gap-2 py-2"
@@ -1184,12 +1669,16 @@ const WorkerDashboard = () => {
 
                   {/* Specialty / Occupation Dropdown */}
                   <div className="mb-3">
-                    <label className="form-label small fw-700 text-muted">Specialty / Occupation</label>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <label className="form-label small fw-700 text-muted mb-0">Specialty / Occupation</label>
+                      <span className="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-20 fw-700" style={{ fontSize: '0.68rem' }}>🔒 Verification Locked</span>
+                    </div>
                     <select
-                      className="form-select rounded-12"
+                      className="form-select rounded-12 bg-light text-muted"
                       value={editOccupation}
                       onChange={(e) => setEditOccupation(e.target.value)}
                       required
+                      disabled
                     >
                       <option value="">Select Specialty</option>
                       {[
@@ -1548,8 +2037,8 @@ const WorkerDashboard = () => {
                             </span>
                             <input 
                               type="text" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-white" 
-                              style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', fontSize: '0.95rem' }}
+                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark" 
+                              style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', fontSize: '0.95rem', color: '#000000' }}
                               placeholder="Enter name on card" 
                               value={cardName} 
                               onChange={(e) => setCardName(e.target.value)}
@@ -1567,8 +2056,8 @@ const WorkerDashboard = () => {
                             </span>
                             <input 
                               type="text" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-white font-monospace" 
-                              style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', letterSpacing: '2px', fontSize: '0.95rem' }}
+                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace" 
+                              style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', letterSpacing: '2px', fontSize: '0.95rem', color: '#000000' }}
                               placeholder="4242 4242 4242 4242" 
                               value={cardNumber} 
                               onChange={handleCardNumberChange}
@@ -1582,8 +2071,8 @@ const WorkerDashboard = () => {
                             <label className="form-label small fw-700 text-white-50">Expiration Date</label>
                             <input 
                               type="text" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-white font-monospace text-center" 
-                              style={{ borderRadius: '12px', fontSize: '0.95rem' }}
+                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace text-center" 
+                              style={{ borderRadius: '12px', fontSize: '0.95rem', color: '#000000' }}
                               placeholder="MM / YY" 
                               value={cardExpiry} 
                               onChange={handleCardExpiryChange}
@@ -1594,8 +2083,8 @@ const WorkerDashboard = () => {
                             <label className="form-label small fw-700 text-white-50">CVC / CVV</label>
                             <input 
                               type="password" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-white font-monospace text-center" 
-                              style={{ borderRadius: '12px', fontSize: '0.95rem' }}
+                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace text-center" 
+                              style={{ borderRadius: '12px', fontSize: '0.95rem', color: '#000000' }}
                               placeholder="•••" 
                               value={cardCvc} 
                               onChange={handleCardCvcChange}
@@ -1610,6 +2099,44 @@ const WorkerDashboard = () => {
                             {cardError}
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Pay with Wallet Balance option */}
+                    {!showCardForm && (
+                      <div className="card border-0 p-3 mb-4 text-white animate-scale-up" style={{
+                        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                        borderRadius: '20px'
+                      }}>
+                        <div className="d-flex align-items-center justify-content-between">
+                          <div>
+                            <div className="small text-white-50">Or pay instantly from wallet:</div>
+                            <h6 className="fw-800 text-white m-0 mt-1">
+                              Wallet Balance: ₹{Number(walletBalance).toFixed(2)}
+                            </h6>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-warning px-3 py-2 fw-bold text-dark border-0 rounded-12"
+                            onClick={() => handleRechargePointsWithWallet(selectedPlan)}
+                            disabled={isPayingWithWallet || walletBalance < (selectedPlan === 'basic' ? 99 : selectedPlan === 'standard' ? 199 : 499)}
+                            style={{ fontSize: '0.85rem' }}
+                          >
+                            {isPayingWithWallet ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                                Paying...
+                              </>
+                            ) : walletBalance < (selectedPlan === 'basic' ? 99 : selectedPlan === 'standard' ? 199 : 499) ? (
+                              'Insufficient Wallet'
+                            ) : (
+                              `⚡ Pay ₹${selectedPlan === 'basic' ? 99 : selectedPlan === 'standard' ? 199 : 499} from Wallet`
+                            )}
+                          </button>
+                        </div>
+                        <div className="small text-warning mt-2" style={{ fontSize: '0.75rem' }}>
+                          * Recharge via wallet qualifies for an automatic waiver of 5% GST! (Saves up to ₹25!)
+                        </div>
                       </div>
                     )}
 
@@ -1713,6 +2240,423 @@ const WorkerDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* ── Add Money to Wallet Modal ── */}
+      {showAddWalletModal && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+              
+              {/* Header */}
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', borderBottom: 'none' }}>
+                <h5 className="modal-title fw-800 m-0"><i className="bi bi-wallet-fill me-2"></i>Add Money to Wallet</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowAddWalletModal(false)}></button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleAddMoneySubmit}>
+                <div className="modal-body px-4 py-4" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                  {/* Amount Input */}
+                  <div className="mb-4">
+                    <label className="form-label small fw-700 text-muted">Enter Amount (₹)</label>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light fw-bold">₹</span>
+                      <input 
+                        type="number" 
+                        className="form-control rounded-12 p-3 fw-bold" 
+                        style={{ fontSize: '1.25rem' }}
+                        placeholder="e.g. 500" 
+                        value={walletAmount} 
+                        onChange={(e) => setWalletAmount(e.target.value)}
+                        required
+                        min="1"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Payment Method Selector */}
+                  <div className="mb-4">
+                    <label className="form-label small fw-700 text-muted d-block mb-2.5">Select Payment Method</label>
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'upi' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                        style={{ fontSize: '0.85rem' }}
+                        onClick={() => setWalletMethod('upi')}
+                      >
+                        📱 UPI
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'card' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                        style={{ fontSize: '0.85rem' }}
+                        onClick={() => setWalletMethod('card')}
+                      >
+                        💳 Card
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'netbanking' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                        style={{ fontSize: '0.85rem' }}
+                        onClick={() => setWalletMethod('netbanking')}
+                      >
+                        🌐 Net Banking
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* UPI Inputs */}
+                  {walletMethod === 'upi' && (
+                    <div className="mb-3 animate-scale-up">
+                      <label className="form-label small fw-700 text-muted">UPI ID (VPA)</label>
+                      <input 
+                        type="text" 
+                        className="form-control rounded-12" 
+                        placeholder="e.g. 9876543210@paytm" 
+                        value={upiId} 
+                        onChange={(e) => setUpiId(e.target.value)}
+                        required
+                      />
+                      <div className="small text-muted mt-1">A mock notification request will be sent to this UPI app.</div>
+                    </div>
+                  )}
+
+                  {/* Card Inputs */}
+                  {walletMethod === 'card' && (
+                    <div className="animate-scale-up">
+                      <div className="mb-3">
+                        <label className="form-label small fw-700 text-muted">Cardholder Name</label>
+                        <input 
+                          type="text" 
+                          className="form-control rounded-12" 
+                          placeholder="Name on Card" 
+                          value={cardName} 
+                          onChange={(e) => setCardName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="mb-3">
+                        <label className="form-label small fw-700 text-muted">Card Number</label>
+                        <input 
+                          type="text" 
+                          className="form-control rounded-12 font-monospace" 
+                          placeholder="4242 4242 4242 4242" 
+                          value={cardNumber} 
+                          onChange={handleCardNumberChange}
+                          required
+                        />
+                      </div>
+                      <div className="row g-3 mb-3">
+                        <div className="col-6">
+                          <label className="form-label small fw-700 text-muted">Expiry Date</label>
+                          <input 
+                            type="text" 
+                            className="form-control rounded-12 font-monospace text-center" 
+                            placeholder="MM / YY" 
+                            value={cardExpiry} 
+                            onChange={handleCardExpiryChange}
+                            required
+                          />
+                        </div>
+                        <div className="col-6">
+                          <label className="form-label small fw-700 text-muted">CVV / CVC</label>
+                          <input 
+                            type="password" 
+                            className="form-control rounded-12 font-monospace text-center" 
+                            placeholder="•••" 
+                            value={cardCvc} 
+                            onChange={handleCardCvcChange}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Net Banking Inputs */}
+                  {walletMethod === 'netbanking' && (
+                    <div className="mb-3 animate-scale-up">
+                      <label className="form-label small fw-700 text-muted">Select Your Bank</label>
+                      <select 
+                        className="form-select rounded-12" 
+                        value={netBank} 
+                        onChange={(e) => setNetBank(e.target.value)}
+                        required
+                      >
+                        <option value="sbi">State Bank of India (SBI)</option>
+                        <option value="hdfc">HDFC Bank</option>
+                        <option value="icici">ICICI Bank</option>
+                        <option value="axis">Axis Bank</option>
+                        <option value="pnb">Punjab National Bank</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary flex-fill rounded-12 py-2 fw-bold"
+                    onClick={() => setShowAddWalletModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary flex-fill rounded-12 py-2 fw-bold"
+                    style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none' }}
+                    disabled={isAddingMoney}
+                  >
+                    {isAddingMoney ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        Recharging...
+                      </>
+                    ) : `Confirm & Add ₹${walletAmount || '0'}`}
+                  </button>
+                </div>
+              </form>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Show QR Code Modal ── */}
+      {showQrCodeModal && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+              
+              {/* Header */}
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #10b981, #059669)', borderBottom: 'none' }}>
+                <h5 className="modal-title fw-800 m-0"><i className="bi bi-qr-code me-2"></i>My QuickLabour QR Code</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowQrCodeModal(false)}></button>
+              </div>
+
+              {/* Body */}
+              <div className="modal-body px-4 py-4 text-center">
+                <p className="text-muted small mb-4">
+                  Show this QR code to hiring clients so they can scan and pay your labour fee directly to your wallet.
+                </p>
+
+                {/* QR Container */}
+                <div className="d-inline-block p-4 bg-white rounded-24 border mb-4 shadow-sm" style={{ border: '2px solid #e2e8f0' }}>
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${sessionStorage.getItem('userId') || 'worker-id-demo'}`}
+                    alt="Labour Wallet QR Code"
+                    style={{ width: '200px', height: '200px', display: 'block' }}
+                  />
+                </div>
+
+                {/* Worker Quick info */}
+                <div className="p-3 bg-light rounded-16 border mx-auto" style={{ maxWidth: '300px' }}>
+                  <h6 className="fw-800 mb-1">{profileName}</h6>
+                  <span className="badge bg-primary-subtle text-primary fw-700">{profileOccupation || 'Trade Worker'}</span>
+                  <div className="small text-muted mt-2 font-monospace">
+                    ID: {sessionStorage.getItem('userId') || 'worker-id-demo'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary w-100 rounded-12 py-2 fw-bold"
+                  onClick={() => setShowQrCodeModal(false)}
+                >
+                  Close QR Code
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating SOS button */}
+      {activeHiredJobs.length > 0 && (
+        <button
+          onClick={() => setShowSosModal(true)}
+          className="position-fixed shadow-lg d-flex align-items-center justify-content-center border-0 text-white"
+          style={{
+            bottom: '24px',
+            left: '24px',
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, #ff3b30 0%, #d32f2f 100%)',
+            zIndex: 1000,
+            fontSize: '1.4rem',
+            animation: 'pulse 1.5s infinite',
+            fontWeight: 'bold'
+          }}
+          title="Press SOS if in danger"
+        >
+          🚨
+        </button>
+      )}
+
+      {/* SOS Modal */}
+      {showSosModal && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: '#ff3b30', borderBottom: 'none' }}>
+                <h5 className="modal-title fw-800 m-0">🚨 Emergency SOS safety system</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowSosModal(false)}></button>
+              </div>
+              <div className="modal-body px-4 py-4 text-center">
+                <div className="bg-danger bg-opacity-10 text-danger p-3 rounded-circle mb-3 mx-auto" style={{ width: '80px', height: '80px', display: 'flex', alignItems: 'center', justifycontent: 'center', fontSize: '2.5rem' }}>
+                  🚨
+                </div>
+                <h5 className="fw-800 text-danger mb-2">Are you in immediate danger?</h5>
+                <p className="text-muted small mb-4">
+                  Triggering the SOS alert will instantly transmit your live GPS coordinates to the QuickLabour Administrator desk, notify regional authorities, and alert emergency contacts.
+                </p>
+
+                {sosAlertTriggered ? (
+                  <div className="alert alert-danger py-3 fw-bold animate-pulse">
+                    📡 TRANSMITTING GPS COORDINATES & ALERTS...
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleTriggerSOS}
+                    className="btn btn-danger w-100 rounded-16 py-3 fw-800 fs-5 shadow-lg"
+                    style={{ background: 'linear-gradient(135deg, #ff3b30, #d32f2f)', border: 'none' }}
+                  >
+                    🚨 Trigger Safety SOS Alert
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Client No-Show Modal */}
+      {showNoShowModal && noShowJob && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', borderBottom: 'none' }}>
+                <h5 className="modal-title fw-800 m-0">📷 Visit Compensation Proof</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowNoShowModal(false)}></button>
+              </div>
+              <div className="modal-body px-4 py-4">
+                <p className="text-muted small mb-3">
+                  If the client is not present at the location or responding to calls, upload a selfie at the location to claim the <strong>₹50 visit compensation</strong> from the client's wallet.
+                </p>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-700 text-muted">1. Upload Selfie Proof at Location</label>
+                  <input
+                    type="file"
+                    className="form-control rounded-12"
+                    onChange={(e) => setSelfieProof(URL.createObjectURL(e.target.files[0]))}
+                    accept="image/*"
+                    required
+                  />
+                  {selfieProof && (
+                    <img src={selfieProof} alt="Selfie preview" className="img-thumbnail mt-2 rounded-12" style={{ maxHeight: '150px' }} />
+                  )}
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-700 text-muted">2. GPS Coordinates Autodetected</label>
+                  <div className="p-3 bg-light rounded-12 border font-monospace small">
+                    🗺️ Lat: {workerLat || '19.0760'}° N, Lng: {workerLng || '72.8777'}° E
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
+                <button type="button" className="btn btn-outline-secondary flex-fill rounded-12 fw-bold" onClick={() => setShowNoShowModal(false)}>Cancel</button>
+                <button type="button" className="btn btn-danger flex-fill rounded-12 fw-bold" style={{ background: '#ef4444', border: 'none' }} onClick={handleSubmitNoShowClaim}>Claim ₹50 Compensation</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Worker Dispute Modal */}
+      {showWorkerDisputeModal && disputeJob && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', borderBottom: 'none' }}>
+                <h5 className="modal-title fw-800 m-0">⚖️ File a Dispute Case</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setShowWorkerDisputeModal(false)}></button>
+              </div>
+              <div className="modal-body px-4 py-4">
+                <div className="alert alert-warning py-2 px-3 rounded-12 mb-3" style={{ fontSize: '0.78rem' }}>
+                  ⚠️ Disputes are reviewed by administrators. Uploading fraudulent proofs will lead to permanent account ban.
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-700 text-muted">Reason for Complaint</label>
+                  <textarea
+                    rows="3"
+                    className="form-control rounded-12"
+                    placeholder="Describe exactly what happened (e.g. client refused payment, extra labor demanded)"
+                    value={disputeReason}
+                    onChange={(e) => setDisputeReason(e.target.value)}
+                    required
+                  ></textarea>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-700 text-muted">Upload Photo Proof (Selfie/Work Screenshot)</label>
+                  <input
+                    type="file"
+                    className="form-control rounded-12"
+                    onChange={(e) => setDisputePhoto(URL.createObjectURL(e.target.files[0]))}
+                    accept="image/*"
+                  />
+                  {disputePhoto && (
+                    <img src={disputePhoto} alt="Dispute preview" className="img-thumbnail mt-2 rounded-12" style={{ maxHeight: '100px' }} />
+                  )}
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-700 text-muted">Upload Call Log Screenshot</label>
+                  <input
+                    type="file"
+                    className="form-control rounded-12"
+                    onChange={(e) => setDisputeCallLog(URL.createObjectURL(e.target.files[0]))}
+                    accept="image/*"
+                  />
+                  {disputeCallLog && (
+                    <img src={disputeCallLog} alt="Call log preview" className="img-thumbnail mt-2 rounded-12" style={{ maxHeight: '100px' }} />
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
+                <button type="button" className="btn btn-outline-secondary flex-fill rounded-12 fw-bold" onClick={() => setShowWorkerDisputeModal(false)}>Cancel</button>
+                <button type="button" className="btn btn-warning flex-fill rounded-12 fw-bold text-white" style={{ background: '#f59e0b', border: 'none' }} onClick={handleSubmitWorkerDispute}>Submit Dispute</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes pulse {
+          0% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
+          }
+          70% {
+            transform: scale(1.1);
+            box-shadow: 0 0 0 15px rgba(255, 59, 48, 0);
+          }
+          100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+          }
+        }
+      `}</style>
     </>
   );
 };
