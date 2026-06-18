@@ -1,9 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  
+  const getAvatarUrl = (avatar, name) => {
+    if (!avatar || 
+        avatar.includes('images.unsplash.com/photo-1534528741775-53994a69daeb') || 
+        avatar.includes('images.unsplash.com/photo-1506794778202-cad84cf45f1d')) {
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=random&color=fff&size=150`;
+    }
+    return avatar;
+  };
+
   const [stats, setStats] = useState({
     clientsCount: 0,
     workersCount: 0,
@@ -24,10 +34,138 @@ const AdminDashboard = () => {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  // Admin Wallet Hub Sub-Tabs and forms states
+  const [activeWalletTab, setActiveWalletTab] = useState('history'); // 'scanner', 'add', 'withdraw', 'history'
+  const [walletAmount, setWalletAmount] = useState('');
+  const [walletMethod, setWalletMethod] = useState('upi');
+  const [netBank, setNetBank] = useState('');
+  const [netBankHolderName, setNetBankHolderName] = useState('');
+  const [netBankCustomerId, setNetBankCustomerId] = useState('');
+  const [isAddingMoney, setIsAddingMoney] = useState(false);
+  const [actionAlert, setActionAlert] = useState('');
+
+  // Withdrawal form states
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawMethod, setWithdrawMethod] = useState('upi');
+  const [upiWithdrawId, setUpiWithdrawId] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountNo, setAccountNo] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [showWithdrawOtp, setShowWithdrawOtp] = useState(false);
+  const [withdrawOtp, setWithdrawOtp] = useState('');
+  const [withdrawOtpNotification, setWithdrawOtpNotification] = useState('');
+  const [classyAlert, setClassyAlert] = useState({ show: false, title: '', message: '', type: 'error' });
+  const showClassyAlert = (message, title = 'Alert', type = 'danger') => {
+    setClassyAlert({ show: true, title, message, type });
+  };
+
+  const getTransactions = () => {
+    const key = `quicklabour_transactions_admin`;
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  };
+
+  const addTransaction = (type, amount, isCredit, status = 'Success', details = {}) => {
+    const key = `quicklabour_transactions_admin`;
+    const txs = getTransactions();
+    const newTx = {
+      id: 'TXN-' + Math.floor(100000 + Math.random() * 900000),
+      type,
+      amount,
+      isCredit,
+      status,
+      date: new Date().toLocaleString(),
+      ...details
+    };
+    txs.unshift(newTx);
+    localStorage.setItem(key, JSON.stringify(txs));
+  };
+
+  const handleAddMoneySubmit = async (e) => {
+    e.preventDefault();
+    if (!walletAmount || isNaN(walletAmount) || Number(walletAmount) <= 0) {
+      showClassyAlert("Please enter a valid amount.", "Invalid Input");
+      return;
+    }
+    setIsAddingMoney(true);
+    try {
+      const res = await api.addWalletMoney(Number(walletAmount), walletMethod);
+      setWalletBalance(res.walletBalance);
+      addTransaction('Admin Deposit', Number(walletAmount), true, 'Success', { method: walletMethod });
+      setActionAlert(`🎉 Successfully added ₹${walletAmount} to Admin Wallet!`);
+      setWalletAmount('');
+      setTimeout(() => setActionAlert(''), 6000);
+    } catch (err) {
+      showClassyAlert("Failed to add money: " + err.message, "Deposit Failed");
+    } finally {
+      setIsAddingMoney(false);
+    }
+  };
+
+  const handleWithdrawSubmit = async (e) => {
+    e.preventDefault();
+    if (!withdrawAmount || isNaN(withdrawAmount) || Number(withdrawAmount) <= 0) {
+      showClassyAlert("Please enter a valid amount.", "Invalid Input");
+      return;
+    }
+    const amt = Number(withdrawAmount);
+    if (amt > walletBalance) {
+      showClassyAlert("Insufficient wallet balance.", "Insufficient Balance");
+      return;
+    }
+
+    if (!showWithdrawOtp) {
+      setIsWithdrawing(true);
+      try {
+        const res = await api.requestWithdrawalOtp(amt);
+        setShowWithdrawOtp(true);
+        setWithdrawOtp('');
+        setWithdrawOtpNotification(`📱 SMS Received on ${sessionStorage.getItem('userPhone') || 'registered phone number'}: Your withdrawal verification OTP is: ${res.otp}`);
+        setActionAlert(`📱 A 4-digit verification code has been sent to your phone number.`);
+        setTimeout(() => setActionAlert(''), 5000);
+      } catch (err) {
+        showClassyAlert("Failed to send verification OTP: " + err.message, "OTP Error");
+      } finally {
+        setIsWithdrawing(false);
+      }
+      return;
+    }
+
+    if (!withdrawOtp || withdrawOtp.length < 4) {
+      showClassyAlert("Please enter the 4-digit verification OTP.", "Verification Required");
+      return;
+    }
+
+    setIsWithdrawing(true);
+    try {
+      const res = await api.withdrawWalletMoney(amt, withdrawOtp);
+      setWalletBalance(res.walletBalance);
+      sessionStorage.setItem('userWalletBalance', res.walletBalance);
+
+      addTransaction(`Withdrawal (${withdrawMethod.toUpperCase()})`, amt, false, 'Success', 
+        withdrawMethod === 'bank' ? { bankName, accountNo, ifscCode } : { upiId: upiWithdrawId }
+      );
+
+      setActionAlert(`💸 Withdrawal of ₹${amt} processed successfully!`);
+      setWithdrawAmount('');
+      setWithdrawOtp('');
+      setShowWithdrawOtp(false);
+      setWithdrawOtpNotification('');
+      setTimeout(() => setActionAlert(''), 6000);
+    } catch (err) {
+      showClassyAlert("Withdrawal verification failed: " + err.message, "Verification Failed");
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
 
   // Modal state for viewing documents
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [selectedCredentials, setSelectedCredentials] = useState(null);
+
+
 
   // Password change states within credentials auditor modal
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
@@ -41,8 +179,10 @@ const AdminDashboard = () => {
     password: '',
     phone: '',
     avatar: '',
+    roleType: 'super_admin',
   });
   const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [adminError, setAdminError] = useState('');
   const [disputes, setDisputes] = useState(
     JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]')
   );
@@ -65,7 +205,17 @@ const AdminDashboard = () => {
     });
     setDisputes(updated);
     localStorage.setItem('quicklabour_disputes', JSON.stringify(updated));
-    alert(`✅ Dispute resolved successfully. Decision: "${decision}" recorded.`);
+    showClassyAlert(`Dispute resolved successfully. Decision: "${decision}" recorded.`, 'Dispute Resolved', 'success');
+  };
+
+  const handleDeleteDispute = (disputeId) => {
+    if (!window.confirm('Are you absolutely sure you want to delete this dispute record? This action is irreversible.')) {
+      return;
+    }
+    const updated = disputes.filter(d => d._id !== disputeId);
+    setDisputes(updated);
+    localStorage.setItem('quicklabour_disputes', JSON.stringify(updated));
+    showClassyAlert('Dispute record deleted successfully.', 'Dispute Deleted', 'success');
   };
 
 
@@ -81,9 +231,12 @@ const AdminDashboard = () => {
 
   const hasPermission = (tab) => {
     // Root admin has total access
-    if (sessionStorage.getItem('userEmail') === 'admin@quicklabour.com') return true;
-    if (tab === 'disputes' && (userPermissions.includes('admins') || userPermissions.includes('overview'))) return true;
-    return userPermissions.includes(tab);
+    const email = sessionStorage.getItem('userEmail');
+    if (email === 'admin@quicklabour.com') return true;
+    const isAllowed = tab === 'disputes'
+      ? (userPermissions.includes('admins') || userPermissions.includes('overview') || userPermissions.includes('disputes'))
+      : userPermissions.includes(tab);
+    return isAllowed;
   };
 
   const isSuperAdmin = hasPermission('admins');
@@ -97,13 +250,6 @@ const AdminDashboard = () => {
     }
 
     fetchAdminData();
-
-    // Auto-refresh admin dashboard silently every 5 seconds
-    const interval = setInterval(() => {
-      fetchAdminData(true);
-    }, 5000);
-
-    return () => clearInterval(interval);
   }, [navigate]);
 
   useEffect(() => {
@@ -141,10 +287,10 @@ const AdminDashboard = () => {
         password: '[Password restored to default plaintext. Refresh directory to load new Bcrypt hash]'
       });
 
-      alert(`🎉 Password restored to default original password successfully!\n\nPlaintext Password: "${defaultPwd}"`);
+      showClassyAlert(`Password restored to default original password successfully!\n\nPlaintext Password: "${defaultPwd}"`, 'Password Restored', 'success');
       fetchAdminData();
     } catch (err) {
-      alert(err.message || 'Failed to restore default password');
+      showClassyAlert(err.message || 'Failed to restore default password', 'Action Failed', 'error');
     } finally {
       setIsUpdatingPassword(false);
     }
@@ -155,16 +301,25 @@ const AdminDashboard = () => {
     setShowPlaintextInAuditor(false);
   };
 
+  const isFetchingRef = useRef(false);
+
   const fetchAdminData = async (isSilent = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     if (!isSilent) setLoading(true);
     setError('');
     try {
       // Sync permissions in real-time
       try {
         const profile = await api.get('/auth/profile');
-        if (profile && profile.permissions) {
-          sessionStorage.setItem('userPermissions', JSON.stringify(profile.permissions));
-          setUserPermissions(profile.permissions);
+        if (profile) {
+          if (profile.permissions) {
+            sessionStorage.setItem('userPermissions', JSON.stringify(profile.permissions));
+            setUserPermissions(profile.permissions);
+          }
+          if (profile.walletBalance !== undefined) {
+            setWalletBalance(profile.walletBalance);
+          }
         }
       } catch (profileErr) {
         console.warn('Failed to sync permissions:', profileErr);
@@ -210,8 +365,10 @@ const AdminDashboard = () => {
         setAdmins(adminsRes);
       }
     } catch (err) {
+      console.error('fetchAdminData error:', err);
       setError(err.message || 'Failed to fetch administrative data');
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
     }
   };
@@ -227,7 +384,7 @@ const AdminDashboard = () => {
       const statsRes = await api.get('/admin/stats');
       setStats(statsRes);
     } catch (err) {
-      alert(err.message || 'Deletion failed');
+      showClassyAlert(err.message || 'Deletion failed', 'Deletion Failed', 'error');
     }
   };
 
@@ -236,14 +393,25 @@ const AdminDashboard = () => {
     setCreatingAdmin(true);
     setAdminError('');
     try {
-      // By default give full access permissions
-      const permissions = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins', 'disputes'];
+      let permissions = [];
+      if (adminForm.roleType === 'super_admin') {
+        permissions = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins', 'disputes'];
+      } else if (adminForm.roleType === 'stats_viewer') {
+        permissions = ['overview'];
+      } else if (adminForm.roleType === 'operations_manager') {
+        permissions = ['clients', 'workers', 'jobs', 'reviews', 'contacts'];
+      } else if (adminForm.roleType === 'disputes_officer') {
+        permissions = ['disputes'];
+      }
+
+      const { roleType, ...submitData } = adminForm;
+
       await api.post('/admin/admins', {
-        ...adminForm,
+        ...submitData,
         permissions
       });
-      
-      alert('🎉 New admin account created successfully with FULL ACCESS!');
+
+      showClassyAlert('New admin account created successfully!', 'Admin Created', 'success');
       setShowAddAdminModal(false);
       setAdminForm({
         fullName: '',
@@ -251,6 +419,7 @@ const AdminDashboard = () => {
         password: '',
         phone: '',
         avatar: '',
+        roleType: 'super_admin',
       });
       fetchAdminData();
     } catch (err) {
@@ -286,7 +455,7 @@ const AdminDashboard = () => {
   );
 
   const filteredWorkers = workers.filter(w => {
-    const matchesSearch = 
+    const matchesSearch =
       w.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       w.occupation.toLowerCase().includes(searchTerm.toLowerCase()) ||
       w.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -324,14 +493,25 @@ const AdminDashboard = () => {
       <div className="container-fluid max-w-7xl mx-auto">
 
         {/* Header Block */}
-        <div className="glass-card p-4 mb-4 rounded-4 shadow-sm border-0 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3" style={{ background: 'rgba(255, 255, 255, 0.75)', backdropFilter: 'blur(10px)' }}>
-          <div>
-            <h2 className="fw-extrabold mb-1" style={{ color: '#1a252f', letterSpacing: '-0.5px' }}>
-              🛠️ Control Center <span className="badge bg-danger fs-6 align-middle ms-2">Admin Portal</span>
-            </h2>
-            <p className="text-muted mb-0">System Overview, Directories Monitoring, and Platform Moderation panel.</p>
+        <div className="glass-card p-4 mb-4 rounded-4 shadow-sm border-0 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4" style={{ background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+          <div className="d-flex flex-column flex-sm-row align-items-sm-center gap-4">
+            <div className="d-flex align-items-center gap-3 pe-sm-4 cursor-pointer" style={{ borderRight: '1px solid rgba(0,0,0,0.1)', cursor: 'pointer' }} onClick={() => setActiveTab('overview')}>
+              <div className="rounded-4 p-3 bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center" style={{ border: '1px solid rgba(40, 167, 69, 0.25)', width: '60px', height: '60px' }}>
+                <i className="bi bi-wallet2 fs-2 animate-pulse"></i>
+              </div>
+              <div>
+                <h6 className="text-uppercase fw-bold text-muted mb-1" style={{ fontSize: '0.75rem', letterSpacing: '0.5px' }}>Admin Wallet Balance</h6>
+                <h3 className="fw-black text-success mb-0" style={{ fontSize: '1.75rem' }}>₹{walletBalance.toLocaleString('en-IN')}</h3>
+              </div>
+            </div>
+            <div>
+              <h2 className="fw-extrabold mb-1" style={{ color: '#1a252f', letterSpacing: '-0.5px' }}>
+                💼 Admin Wallet Portal
+              </h2>
+              <p className="text-muted mb-0">Monitor subscription revenues, track system metrics, and manage user accounts.</p>
+            </div>
           </div>
-          <div className="d-flex gap-2">
+          <div className="d-flex gap-2 align-self-start align-self-md-center">
             <button className="btn btn-outline-secondary rounded-3 px-3 fw-bold" onClick={fetchAdminData}>
               <i className="bi bi-arrow-clockwise me-1"></i> Refresh
             </button>
@@ -348,67 +528,77 @@ const AdminDashboard = () => {
         )}
 
         {/* Dynamic Stats Grid */}
-        <div className="row g-3 mb-4">
-          <div className="col-12 col-sm-6 col-lg-3">
-            <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #007bff' }}>
-              <div className="d-flex align-items-center">
-                <div className="rounded-3 p-3 bg-primary bg-opacity-10 text-primary me-3">
-                  <i className="bi bi-people-fill fs-3"></i>
-                </div>
-                <div>
-                  <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Total Clients</h6>
-                  <h3 className="fw-black mb-0">{stats.clientsCount}</h3>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="col-12 col-sm-6 col-lg-3">
-            <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #28a745' }}>
-              <div className="d-flex align-items-center">
-                <div className="rounded-3 p-3 bg-success bg-opacity-10 text-success me-3">
-                  <i className="bi bi-hammer fs-3"></i>
-                </div>
-                <div>
-                  <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Active Workers</h6>
-                  <h3 className="fw-black mb-0">{stats.workersCount}</h3>
+        {(hasPermission('overview') || hasPermission('clients') || hasPermission('workers') || hasPermission('jobs') || hasPermission('contacts')) && (
+          <div className="row g-3 mb-4">
+            {(hasPermission('clients') || hasPermission('overview')) && (
+              <div className="col-12 col-sm-6 col-lg-3">
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #007bff' }}>
+                  <div className="d-flex align-items-center">
+                    <div className="rounded-3 p-3 bg-primary bg-opacity-10 text-primary me-3">
+                      <i className="bi bi-people-fill fs-3"></i>
+                    </div>
+                    <div>
+                      <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Total Clients</h6>
+                      <h3 className="fw-black mb-0">{stats.clientsCount}</h3>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-          <div className="col-12 col-sm-6 col-lg-3">
-            <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #fd7e14' }}>
-              <div className="d-flex align-items-center">
-                <div className="rounded-3 p-3 bg-warning bg-opacity-10 text-warning me-3">
-                  <i className="bi bi-briefcase-fill fs-3"></i>
-                </div>
-                <div>
-                  <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Repair Jobs</h6>
-                  <h3 className="fw-black mb-0">{stats.jobsCount}</h3>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="col-12 col-sm-6 col-lg-3">
-            <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #dc3545' }}>
-              <div className="d-flex align-items-center">
-                <div className="rounded-3 p-3 bg-danger bg-opacity-10 text-danger me-3">
-                  <i className="bi bi-envelope-exclamation-fill fs-3"></i>
-                </div>
-                <div>
-                  <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Support Tickets</h6>
-                  <h3 className="fw-black mb-0">{stats.contactsCount}</h3>
+            )}
+            {(hasPermission('workers') || hasPermission('overview')) && (
+              <div className="col-12 col-sm-6 col-lg-3">
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #28a745' }}>
+                  <div className="d-flex align-items-center">
+                    <div className="rounded-3 p-3 bg-success bg-opacity-10 text-success me-3">
+                      <i className="bi bi-hammer fs-3"></i>
+                    </div>
+                    <div>
+                      <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Active Workers</h6>
+                      <h3 className="fw-black mb-0">{stats.workersCount}</h3>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+            {(hasPermission('jobs') || hasPermission('overview')) && (
+              <div className="col-12 col-sm-6 col-lg-3">
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #fd7e14' }}>
+                  <div className="d-flex align-items-center">
+                    <div className="rounded-3 p-3 bg-warning bg-opacity-10 text-warning me-3">
+                      <i className="bi bi-briefcase-fill fs-3"></i>
+                    </div>
+                    <div>
+                      <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Repair Jobs</h6>
+                      <h3 className="fw-black mb-0">{stats.jobsCount}</h3>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {(hasPermission('contacts') || hasPermission('overview')) && (
+              <div className="col-12 col-sm-6 col-lg-3">
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #dc3545' }}>
+                  <div className="d-flex align-items-center">
+                    <div className="rounded-3 p-3 bg-danger bg-opacity-10 text-danger me-3">
+                      <i className="bi bi-envelope-exclamation-fill fs-3"></i>
+                    </div>
+                    <div>
+                      <h6 className="text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.75rem' }}>Support Tickets</h6>
+                      <h3 className="fw-black mb-0">{stats.contactsCount}</h3>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Tab Navigator */}
         <div className="card border-0 shadow-sm rounded-4 p-2 mb-4" style={{ background: 'rgba(255, 255, 255, 0.85)' }}>
           <div className="nav nav-pills d-flex flex-wrap gap-1 border-0">
             {hasPermission('overview') && (
               <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'overview' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('overview'); setSearchTerm(''); }}>
-                📊 Stats Graph
+                💳 Wallet Hub
               </button>
             )}
             {hasPermission('clients') && (
@@ -462,42 +652,479 @@ const AdminDashboard = () => {
         {/* Tab Contents */}
         <div className="glass-card rounded-4 p-4 shadow-sm border-0" style={{ background: 'rgba(255, 255, 255, 0.85)', minHeight: '400px' }}>
 
-          {/* TAB 1: OVERVIEW */}
+          {/* TAB 1: ADMIN WALLET HUB */}
           {activeTab === 'overview' && hasPermission('overview') && (
             <div>
-              <h4 className="fw-bold text-dark mb-4"><i className="bi bi-graph-up me-2 text-primary"></i> Platform Revenue & Performance Metrics</h4>
-              <div className="row g-4">
-                <div className="col-12 col-md-6 col-lg-4">
-                  <div className="card bg-dark text-white rounded-4 border-0 p-4 shadow-sm">
-                    <h6 className="text-uppercase fw-bold text-muted mb-2">Total Job Transaction Volume</h6>
-                    <h2 className="fw-black text-warning">₹{stats.totalBudget.toLocaleString('en-IN')}</h2>
-                    <p className="small text-muted mb-0">Total combined budgets posted by clients since establishment.</p>
-                  </div>
+              <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4 border-bottom pb-3">
+                <div>
+                  <h4 className="fw-bold text-dark mb-1">
+                    <i className="bi bi-wallet2 text-success me-2"></i> Admin Wallet Hub
+                  </h4>
+                  <p className="text-muted small mb-0">Manage platform subscription revenues, manual recharges, and bank withdrawals.</p>
                 </div>
-                <div className="col-12 col-md-6 col-lg-4">
-                  <div className="card bg-white rounded-4 border-0 p-4 shadow-sm">
-                    <h6 className="text-uppercase fw-bold text-muted mb-2">Service Matchmaking Rate</h6>
-                    <h2 className="fw-black text-primary">
-                      {stats.jobsCount > 0 ? Math.round((jobs.filter(j => j.status === 'Accepted' || j.status === 'Completed').length / stats.jobsCount) * 100) : 0}%
-                    </h2>
-                    <p className="small text-muted mb-0">Percentage of job bookings successfully matched with a local worker.</p>
+                {/* Action Alert Banner */}
+                {actionAlert && (
+                  <div className="alert alert-success py-2 px-3 rounded-3 shadow-sm mb-0 d-flex align-items-center gap-2" role="alert" style={{ fontSize: '0.88rem' }}>
+                    <i className="bi bi-check-circle-fill"></i>
+                    <strong>{actionAlert}</strong>
                   </div>
-                </div>
-                <div className="col-12 col-md-6 col-lg-4">
-                  <div className="card bg-white rounded-4 border-0 p-4 shadow-sm">
-                    <h6 className="text-uppercase fw-bold text-muted mb-2">Community Reviews Loaded</h6>
-                    <h2 className="fw-black text-success">{stats.reviewsCount} ⭐</h2>
-                    <p className="small text-muted mb-0">Total user ratings submitted dynamically on the platform reviews portal.</p>
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* Graphic Mock */}
-              <div className="mt-5 p-4 border rounded-4 text-center bg-light shadow-inner">
-                <i className="bi bi-activity text-primary fs-1 mb-2"></i>
-                <h5 className="fw-bold mb-1">Platform Activity is 100% Online</h5>
-                <p className="text-muted small mb-0">Express API connected directly to your MongoDB Atlas cluster: `QuickLabour_data`.</p>
+              {/* Wallet Navigation Tabs */}
+              <div className="d-flex gap-2 mb-4 p-2 bg-light rounded-3 shadow-sm" style={{ maxWidth: '600px' }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm flex-fill py-2 fw-bold rounded-2 border-0 ${activeWalletTab === 'history' ? 'bg-white text-primary shadow-sm' : 'text-secondary bg-transparent'}`}
+                  onClick={() => setActiveWalletTab('history')}
+                >
+                  <i className="bi bi-clock-history me-1.5"></i> Transaction History
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm flex-fill py-2 fw-bold rounded-2 border-0 ${activeWalletTab === 'scanner' ? 'bg-white text-primary shadow-sm' : 'text-secondary bg-transparent'}`}
+                  onClick={() => setActiveWalletTab('scanner')}
+                >
+                  <i className="bi bi-qr-code-scan me-1.5"></i> QR Scanner
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm flex-fill py-2 fw-bold rounded-2 border-0 ${activeWalletTab === 'add' ? 'bg-white text-primary shadow-sm' : 'text-secondary bg-transparent'}`}
+                  onClick={() => setActiveWalletTab('add')}
+                >
+                  <i className="bi bi-plus-circle me-1.5"></i> Add Money
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm flex-fill py-2 fw-bold rounded-2 border-0 ${activeWalletTab === 'withdraw' ? 'bg-white text-primary shadow-sm' : 'text-secondary bg-transparent'}`}
+                  onClick={() => setActiveWalletTab('withdraw')}
+                >
+                  <i className="bi bi-cash-stack me-1.5"></i> Withdraw
+                </button>
               </div>
+
+              {/* Sub-tab Content: Transaction History */}
+              {activeWalletTab === 'history' && (
+                <div>
+                  <h5 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#0f172a' }}>
+                    📜 Pay & Credit Statement
+                  </h5>
+                  <div className="table-responsive">
+                    <table className="table align-middle table-hover border-0">
+                      <thead className="table-light">
+                        <tr className="border-0">
+                          <th>Reference ID</th>
+                          <th>Transaction Type / Details</th>
+                          <th>Timestamp</th>
+                          <th>Status</th>
+                          <th className="text-end">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {getTransactions().length > 0 ? (
+                          getTransactions().map((tx) => (
+                            <tr key={tx.id}>
+                              <td className="font-monospace fw-bold small text-muted">{tx.id}</td>
+                              <td>
+                                <div>
+                                  <strong className="text-dark">{tx.type}</strong>
+                                  {tx.workerName && (
+                                    <span className="d-block small text-muted">
+                                      Worker: {tx.workerName}
+                                    </span>
+                                  )}
+                                  {tx.method && (
+                                    <span className="d-block small text-muted">
+                                      Payment: {tx.method.toUpperCase()}
+                                    </span>
+                                  )}
+                                  {tx.bankName && (
+                                    <span className="d-block small text-muted">
+                                      Bank: {tx.bankName} (A/C: {tx.accountNo})
+                                    </span>
+                                  )}
+                                  {tx.upiId && (
+                                    <span className="d-block small text-muted">
+                                      UPI ID: {tx.upiId}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="small text-muted">{tx.date}</td>
+                              <td>
+                                <span className={`badge rounded-pill px-3 py-1.5 fw-bold ${tx.status === 'Success' ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'}`}>
+                                  {tx.status}
+                                </span>
+                              </td>
+                              <td className={`text-end fw-extrabold ${tx.isCredit ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.05rem' }}>
+                                {tx.isCredit ? '+' : '-'} ₹{Number(tx.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan="5" className="text-center py-5 text-muted">
+                              <i className="bi bi-journal-text fs-2 opacity-50 mb-2 d-block"></i>
+                              No wallet transactions logged. Platform subscription revenues will automatically show here!
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tab Content: QR Scanner */}
+              {activeWalletTab === 'scanner' && (
+                <div className="row g-4 align-items-center">
+                  <div className="col-12 col-md-5 text-center">
+                    <div className="p-4 bg-white rounded-24 border shadow-sm" style={{ border: '2px solid #e2e8f0', display: 'inline-block' }}>
+                      <img
+                        src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=quicklabour@icici%26pn=QuickLabourAdmin%26cu=INR"
+                        alt="Admin UPI QR Code"
+                        className="img-fluid rounded-16 shadow-inner border mb-3"
+                        style={{ width: '220px', height: '220px' }}
+                      />
+                      <h6 className="fw-bold mb-1" style={{ color: '#0a2540' }}>Platform Merchant QR</h6>
+                      <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-1 fw-bold">Active Receiving Agent</span>
+                    </div>
+                  </div>
+                  <div className="col-12 col-md-7">
+                    <h5 className="fw-bold text-dark mb-2">Receive Platform Revenues</h5>
+                    <p className="text-muted small">
+                      This QR code represents the official Admin Receiving Wallet. Workers can scan this code to pay registration fees, points subscription top-ups, or custom service charges directly.
+                    </p>
+                    <div className="p-3 bg-light rounded-3 border mb-3">
+                      <div className="small text-muted mb-1"><strong>UPI ID:</strong> quicklabour@icici</div>
+                      <div className="small text-muted mb-1"><strong>Merchant Name:</strong> Quick Labour Portal</div>
+                      <div className="small text-muted mb-0"><strong>Supported Apps:</strong> Google Pay, PhonePe, Paytm, BHIM</div>
+                    </div>
+                    <div className="alert alert-info py-2 px-3 rounded-3" style={{ fontSize: '0.85rem' }}>
+                      <i className="bi bi-info-circle me-1"></i> Subscription payments made by labourers through their points subscriptions automatically credit the Admin's wallet and log details into the statement!
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tab Content: Add Money */}
+              {activeWalletTab === 'add' && (
+                <div style={{ maxWidth: '500px' }}>
+                  <h5 className="fw-bold mb-3 text-dark">Add Funds to Platform Reserve</h5>
+                  <form onSubmit={handleAddMoneySubmit}>
+                    {walletMethod !== 'netbanking' && (
+                      <div className="mb-3">
+                        <label className="form-label small fw-bold text-muted">Enter Amount (₹)</label>
+                        <div className="input-group">
+                          <span className="input-group-text bg-light fw-bold">₹</span>
+                          <input
+                            type="number"
+                            className="form-control fw-bold"
+                            placeholder="e.g. 1000"
+                            value={walletAmount}
+                            onChange={(e) => setWalletAmount(e.target.value)}
+                            min="1"
+                            required
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mb-4">
+                      <label className="form-label small fw-bold text-muted">Payment Channel</label>
+                      <select
+                        className="form-select fw-semibold"
+                        value={walletMethod}
+                        onChange={(e) => setWalletMethod(e.target.value)}
+                      >
+                        <option value="upi">UPI Sandbox (GPay / PhonePe)</option>
+                        <option value="card">Card Sandbox (Visa / MasterCard / RuPay)</option>
+                        <option value="netbanking">Net Banking (SBI / HDFC / ICICI)</option>
+                      </select>
+                    </div>
+
+                    {walletMethod === 'netbanking' && (
+                      <div className="netbanking-container border p-4 rounded-3 bg-light mb-4 animate-scale-up text-start">
+                        <h6 className="fw-bold text-dark mb-3">Net Banking</h6>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-bold text-muted">Select Bank</label>
+                          <select 
+                            className="form-select rounded-3 py-2 fw-semibold"
+                            value={netBank}
+                            onChange={(e) => setNetBank(e.target.value)}
+                            required
+                          >
+                            <option value="">Choose Your Bank</option>
+                            <option>State Bank of India (SBI)</option>
+                            <option>HDFC Bank</option>
+                            <option>ICICI Bank</option>
+                            <option>Punjab National Bank (PNB)</option>
+                            <option>Axis Bank</option>
+                            <option>Kotak Mahindra Bank</option>
+                          </select>
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-bold text-muted">Account Holder Name</label>
+                          <input 
+                            type="text" 
+                            className="form-control rounded-3" 
+                            placeholder="Enter Name"
+                            value={netBankHolderName}
+                            onChange={(e) => setNetBankHolderName(e.target.value)}
+                            required 
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-bold text-muted">Customer ID / User ID</label>
+                          <input 
+                            type="text" 
+                            className="form-control rounded-3" 
+                            placeholder="Enter User ID"
+                            value={netBankCustomerId}
+                            onChange={(e) => setNetBankCustomerId(e.target.value)}
+                            required 
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-bold text-muted">Amount</label>
+                          <input 
+                            type="number" 
+                            className="form-control rounded-3 py-2 fw-bold" 
+                            placeholder="Enter Amount"
+                            value={walletAmount}
+                            onChange={(e) => setWalletAmount(e.target.value)}
+                            required 
+                            min="1"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="btn btn-primary rounded-3 w-100 fw-bold py-2.5"
+                      disabled={isAddingMoney}
+                    >
+                      {isAddingMoney ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                          Processing...
+                        </>
+                      ) : (
+                        walletMethod === 'netbanking' ? 'Proceed to Bank' : `Deposit ₹${walletAmount ? Number(walletAmount).toLocaleString() : '0'} to Reserve`
+                      )}
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {activeWalletTab === 'withdraw' && (
+                <div style={{ maxWidth: '500px' }}>
+                  <h5 className="fw-bold mb-3 text-dark">Withdraw Platform Earnings</h5>
+                  <form onSubmit={handleWithdrawSubmit}>
+                    {/* Simulated SMS Notification banner */}
+                    {withdrawOtpNotification && (
+                      <div className="alert alert-warning py-3 px-3 rounded-3 border-warning mb-4 shadow-sm" role="alert" style={{ fontSize: '0.88rem', borderLeft: '5px solid #ffc107' }}>
+                        <div className="fw-800 text-dark mb-1" style={{ fontWeight: 800 }}>
+                          <i className="bi bi-chat-left-dots-fill text-warning me-2"></i>Simulated SMS Banner:
+                        </div>
+                        <div className="font-monospace text-dark bg-white p-2 rounded border mt-2 small" style={{ fontWeight: 600 }}>
+                          {withdrawOtpNotification}
+                        </div>
+                      </div>
+                    )}
+
+                    {!showWithdrawOtp ? (
+                      <>
+                        <div className="mb-3">
+                          <label className="form-label small fw-bold text-muted">Withdrawal Amount (₹)</label>
+                          <div className="input-group">
+                            <span className="input-group-text bg-light fw-bold">₹</span>
+                            <input
+                              type="number"
+                              className="form-control fw-bold"
+                              placeholder="e.g. 500"
+                              value={withdrawAmount}
+                              onChange={(e) => setWithdrawAmount(e.target.value)}
+                              max={walletBalance}
+                              min="1"
+                              required
+                            />
+                          </div>
+                          <div className="form-text text-muted small mt-1">
+                            Available Balance: <strong>₹{walletBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                          </div>
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-bold text-muted">Payout Option</label>
+                          <div className="d-flex gap-3">
+                            <div className="form-check">
+                              <input
+                                className="form-check-input"
+                                type="radio"
+                                name="adminWithdrawMethod"
+                                id="adminWithdrawUpi"
+                                checked={withdrawMethod === 'upi'}
+                                onChange={() => setWithdrawMethod('upi')}
+                              />
+                              <label className="form-check-label fw-semibold" htmlFor="adminWithdrawUpi">
+                                UPI ID
+                              </label>
+                            </div>
+                            <div className="form-check">
+                              <input
+                                className="form-check-input"
+                                type="radio"
+                                name="adminWithdrawMethod"
+                                id="adminWithdrawBank"
+                                checked={withdrawMethod === 'bank'}
+                                onChange={() => setWithdrawMethod('bank')}
+                              />
+                              <label className="form-check-label fw-semibold" htmlFor="adminWithdrawBank">
+                                Bank Account
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        {withdrawMethod === 'upi' ? (
+                          <div className="mb-4">
+                            <label className="form-label small fw-bold text-muted">Receiver UPI ID</label>
+                            <input
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. administrator@oksbi"
+                              value={upiWithdrawId}
+                              onChange={(e) => setUpiWithdrawId(e.target.value)}
+                              required
+                            />
+                          </div>
+                        ) : (
+                          <div className="mb-4 p-3 bg-light rounded-3 border">
+                            <div className="mb-2.5">
+                              <label className="form-label small fw-bold text-muted mb-1">Bank Name</label>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                placeholder="e.g. ICICI Bank"
+                                value={bankName}
+                                onChange={(e) => setBankName(e.target.value)}
+                                required
+                              />
+                            </div>
+                            <div className="mb-2.5">
+                              <label className="form-label small fw-bold text-muted mb-1">Account Number</label>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                placeholder="e.g. 987654321012"
+                                value={accountNo}
+                                onChange={(e) => setAccountNo(e.target.value)}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="form-label small fw-bold text-muted mb-1">IFSC Code</label>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm"
+                                placeholder="e.g. ICIC0001234"
+                                value={ifscCode}
+                                onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                                required
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="submit"
+                          className="btn btn-danger rounded-3 w-100 fw-bold py-2.5"
+                          disabled={isWithdrawing || Number(withdrawAmount) > walletBalance}
+                        >
+                          {isWithdrawing ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                              Sending OTP...
+                            </>
+                          ) : (
+                            `Withdraw ₹${withdrawAmount ? Number(withdrawAmount).toLocaleString() : '0'}`
+                          )}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-4 text-center animate-scale-up">
+                          <label className="form-label small fw-bold text-muted mb-2">ENTER 4-DIGIT VERIFICATION CODE</label>
+                          <input
+                            type="text"
+                            maxLength="4"
+                            className="form-control text-center font-monospace fw-bold fs-3"
+                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '8px' }}
+                            placeholder="••••"
+                            value={withdrawOtp}
+                            onChange={(e) => setWithdrawOtp(e.target.value.replace(/\D/g, ''))}
+                            required
+                            autoFocus
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="btn btn-success rounded-3 w-100 fw-bold py-2.5"
+                          disabled={isWithdrawing}
+                        >
+                          {isWithdrawing ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                              Verifying & Processing...
+                            </>
+                          ) : `Verify & Process ₹${withdrawAmount}`}
+                        </button>
+
+                        <div className="text-center mt-3">
+                          <button
+                            type="button"
+                            className="btn btn-link text-decoration-none small fw-bold p-0"
+                            style={{ color: '#0d6efd', fontSize: '0.85rem' }}
+                            onClick={async () => {
+                              try {
+                                const res = await api.requestWithdrawalOtp(Number(withdrawAmount));
+                                setWithdrawOtp('');
+                                setWithdrawOtpNotification(`📱 SMS Received on ${sessionStorage.getItem('userPhone') || 'registered phone number'}: Your new withdrawal verification OTP is: ${res.otp}`);
+                              } catch (err) {
+                                showClassyAlert("Failed to resend OTP: " + err.message, "OTP Error", "error");
+                              }
+                            }}
+                          >
+                            <i className="bi bi-arrow-clockwise me-1"></i> Resend OTP Code
+                          </button>
+                        </div>
+
+                        <div className="text-center mt-2 border-top pt-3">
+                          <span
+                            className="toggle-auth-link small text-muted text-decoration-underline"
+                            style={{ cursor: 'pointer', fontSize: '0.82rem' }}
+                            onClick={() => {
+                              setShowWithdrawOtp(false);
+                              setWithdrawOtp('');
+                              setWithdrawOtpNotification('');
+                            }}
+                          >
+                            ← Change Withdrawal Details
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </form>
+                </div>
+              )}
+
             </div>
           )}
 
@@ -521,7 +1148,7 @@ const AdminDashboard = () => {
                       <tr key={client._id}>
                         <td>
                           <div className="d-flex align-items-center">
-                            <img src={client.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80'} alt="Avatar" className="rounded-circle me-3" style={{ width: '40px', height: '40px', objectFit: 'cover' }} />
+                            <img src={getAvatarUrl(client.avatar, client.fullName)} alt="Avatar" className="rounded-circle me-3" style={{ width: '40px', height: '40px', objectFit: 'cover' }} />
                             <div>
                               <div className="fw-bold text-dark">{client.fullName}</div>
                               <span className="small text-muted">ID: {client._id.slice(-6).toUpperCase()}</span>
@@ -578,11 +1205,10 @@ const AdminDashboard = () => {
                 {specialties.map(spec => (
                   <button
                     key={spec}
-                    className={`btn btn-sm rounded-pill px-3 py-2 fw-bold transition-all border-0 ${
-                      selectedSpecialty === spec 
-                        ? 'btn-primary text-white shadow-sm' 
+                    className={`btn btn-sm rounded-pill px-3 py-2 fw-bold transition-all border-0 ${selectedSpecialty === spec
+                        ? 'btn-primary text-white shadow-sm'
                         : 'bg-light text-secondary'
-                    }`}
+                      }`}
                     style={{ transition: 'all 0.2s ease' }}
                     onClick={() => setSelectedSpecialty(spec)}
                   >
@@ -591,90 +1217,90 @@ const AdminDashboard = () => {
                 ))}
               </div>
               <div className="table-responsive">
-              <table className="table align-middle table-hover border-0">
-                <thead className="table-light">
-                  <tr>
-                    <th>Worker Details</th>
-                    <th>Trade Specialty</th>
-                    <th>Ratings & Completed</th>
-                    <th>Availability</th>
-                    <th>Verification Docs</th>
-                    <th className="text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWorkers.length > 0 ? (
-                    filteredWorkers.map((worker) => (
-                      <tr key={worker._id}>
-                        <td>
-                          <div className="d-flex align-items-center">
-                            <img src={worker.avatar || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80'} alt="Avatar" className="rounded-circle me-3" style={{ width: '40px', height: '40px', objectFit: 'cover' }} />
-                            <div>
-                              <div className="fw-bold text-dark">{worker.fullName}</div>
-                              <span className="small text-muted">{worker.phone}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 fw-bold rounded-pill">{worker.occupation}</span>
-                        </td>
-                        <td>
-                          <div className="fw-bold text-warning">{worker.rating || 4.9} ⭐</div>
-                          <div className="small text-muted mb-1">{worker.jobsCompleted || 0} completions</div>
-                          <span className="badge bg-warning bg-opacity-20 text-dark rounded-pill fw-bold small px-2 py-1" style={{ border: '1px solid #ffd43b', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                            🪙 {worker.points !== undefined ? worker.points : 0} Points
-                          </span>
-                        </td>
-                        <td>
-                          {worker.isOnline ? (
-                            <span className="badge bg-success rounded-pill px-2 py-1">Online</span>
-                          ) : (
-                            <span className="badge bg-secondary rounded-pill px-2 py-1">Offline</span>
-                          )}
-                        </td>
-                        <td>
-                          {worker.idFile ? (
-                            <button className="btn btn-outline-primary btn-sm rounded-3 fw-bold py-1 px-2" onClick={() => setSelectedDoc({ name: worker.fullName, type: worker.idType, file: worker.idFile })}>
-                              <i className="bi bi-file-earmark-check me-1"></i> View {worker.idType}
-                            </button>
-                          ) : (
-                            <span className="text-muted small">No File Uploaded</span>
-                          )}
-                        </td>
-                        <td className="text-center">
-                          <div className="d-flex justify-content-center gap-2">
-                            <button
-                              className="btn btn-sm rounded-3 fw-bold text-white px-3"
-                              style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }}
-                              onClick={() => setSelectedCredentials({
-                                id: worker._id,
-                                name: worker.fullName,
-                                email: worker.email,
-                                password: worker.password || 'Secret Encrypted',
-                                plainPassword: worker.plainPassword || 'worker123',
-                                role: 'Worker / Labour',
-                                phone: worker.phone,
-                                address: worker.address || 'Not Provided',
-                                extra: `Occupation: ${worker.occupation} | Rating: ${worker.rating || '4.9'} ⭐ | Points Balance: ${worker.points !== undefined ? worker.points : 0} Points`
-                              })}
-                            >
-                              ℹ️ More Details
-                            </button>
-                            <button className="btn btn-outline-danger btn-sm rounded-3 fw-bold" onClick={() => handleDelete('/admin/workers', worker._id, setWorkers, workers)}>
-                              <i className="bi bi-trash"></i> Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
+                <table className="table align-middle table-hover border-0">
+                  <thead className="table-light">
                     <tr>
-                      <td colSpan="6" className="text-center py-5 text-muted">No Worker profiles matched your search parameters.</td>
+                      <th>Worker Details</th>
+                      <th>Trade Specialty</th>
+                      <th>Ratings & Completed</th>
+                      <th>Availability</th>
+                      <th>Verification Docs</th>
+                      <th className="text-center">Action</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredWorkers.length > 0 ? (
+                      filteredWorkers.map((worker) => (
+                        <tr key={worker._id}>
+                          <td>
+                            <div className="d-flex align-items-center">
+                              <img src={getAvatarUrl(worker.avatar, worker.fullName)} alt="Avatar" className="rounded-circle me-3" style={{ width: '40px', height: '40px', objectFit: 'cover' }} />
+                              <div>
+                                <div className="fw-bold text-dark">{worker.fullName}</div>
+                                <span className="small text-muted">{worker.phone}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 fw-bold rounded-pill">{worker.occupation}</span>
+                          </td>
+                          <td>
+                            <div className="fw-bold text-warning">{worker.rating || 4.9} ⭐</div>
+                            <div className="small text-muted mb-1">{worker.jobsCompleted || 0} completions</div>
+                            <span className="badge bg-warning bg-opacity-20 text-dark rounded-pill fw-bold small px-2 py-1" style={{ border: '1px solid #ffd43b', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              🪙 {worker.points !== undefined ? worker.points : 0} Points
+                            </span>
+                          </td>
+                          <td>
+                            {worker.isOnline ? (
+                              <span className="badge bg-success rounded-pill px-2 py-1">Online</span>
+                            ) : (
+                              <span className="badge bg-secondary rounded-pill px-2 py-1">Offline</span>
+                            )}
+                          </td>
+                          <td>
+                            {worker.idFile ? (
+                              <button className="btn btn-outline-primary btn-sm rounded-3 fw-bold py-1 px-2" onClick={() => setSelectedDoc({ name: worker.fullName, type: worker.idType, file: worker.idFile })}>
+                                <i className="bi bi-file-earmark-check me-1"></i> View {worker.idType}
+                              </button>
+                            ) : (
+                              <span className="text-muted small">No File Uploaded</span>
+                            )}
+                          </td>
+                          <td className="text-center">
+                            <div className="d-flex justify-content-center gap-2">
+                              <button
+                                className="btn btn-sm rounded-3 fw-bold text-white px-3"
+                                style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }}
+                                onClick={() => setSelectedCredentials({
+                                  id: worker._id,
+                                  name: worker.fullName,
+                                  email: worker.email,
+                                  password: worker.password || 'Secret Encrypted',
+                                  plainPassword: worker.plainPassword || 'worker123',
+                                  role: 'Worker / Labour',
+                                  phone: worker.phone,
+                                  address: worker.address || 'Not Provided',
+                                  extra: `Occupation: ${worker.occupation} | Rating: ${worker.rating || '4.9'} ⭐ | Points Balance: ${worker.points !== undefined ? worker.points : 0} Points`
+                                })}
+                              >
+                                ℹ️ More Details
+                              </button>
+                              <button className="btn btn-outline-danger btn-sm rounded-3 fw-bold" onClick={() => handleDelete('/admin/workers', worker._id, setWorkers, workers)}>
+                                <i className="bi bi-trash"></i> Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="6" className="text-center py-5 text-muted">No Worker profiles matched your search parameters.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
 
@@ -702,7 +1328,7 @@ const AdminDashboard = () => {
                         </td>
                         <td>
                           <div className="d-flex align-items-center">
-                            <img src={job.client?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80'} alt="Avatar" className="rounded-circle me-2" style={{ width: '30px', height: '30px', objectFit: 'cover' }} />
+                            <img src={getAvatarUrl(job.client?.avatar, job.name || job.client?.fullName || 'Client')} alt="Avatar" className="rounded-circle me-2" style={{ width: '30px', height: '30px', objectFit: 'cover' }} />
                             <span className="small fw-bold">{job.name || job.client?.fullName || 'Client'}</span>
                           </div>
                         </td>
@@ -710,7 +1336,7 @@ const AdminDashboard = () => {
                         <td>
                           {job.hiredWorker ? (
                             <div className="d-flex align-items-center">
-                              <img src={job.hiredWorker?.avatar || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80'} alt="Avatar" className="rounded-circle me-2" style={{ width: '30px', height: '30px', objectFit: 'cover' }} />
+                              <img src={getAvatarUrl(job.hiredWorker?.avatar, job.hiredWorker?.fullName || 'Worker')} alt="Avatar" className="rounded-circle me-2" style={{ width: '30px', height: '30px', objectFit: 'cover' }} />
                               <span className="small">{job.hiredWorker?.fullName}</span>
                             </div>
                           ) : (
@@ -719,9 +1345,9 @@ const AdminDashboard = () => {
                         </td>
                         <td>
                           <span className={`badge rounded-pill px-3 py-2 fw-bold ${job.status === 'Completed' ? 'bg-success bg-opacity-10 text-success' :
-                              job.status === 'Accepted' ? 'bg-info bg-opacity-10 text-info' :
-                                job.status === 'Rejected' ? 'bg-danger bg-opacity-10 text-danger' :
-                                  'bg-warning bg-opacity-10 text-warning'
+                            job.status === 'Accepted' ? 'bg-info bg-opacity-10 text-info' :
+                              job.status === 'Rejected' ? 'bg-danger bg-opacity-10 text-danger' :
+                                'bg-warning bg-opacity-10 text-warning'
                             }`}>{job.status}</span>
                         </td>
                         <td className="text-center">
@@ -813,7 +1439,7 @@ const AdminDashboard = () => {
             <div>
               <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
                 <h5 className="fw-bold mb-0 text-dark">Administrative Authority Officers</h5>
-                <button 
+                <button
                   className="btn btn-success rounded-3 fw-bold px-3 py-2 shadow-sm border-0 d-inline-flex align-items-center gap-2 animate-pulse"
                   style={{ background: 'linear-gradient(135deg, #198754, #146c43)', transition: 'all 0.2s' }}
                   onClick={() => setShowAddAdminModal(true)}
@@ -924,11 +1550,19 @@ const AdminDashboard = () => {
                             <h6 className="fw-bold text-dark mt-1 mb-0">{disp.jobTitle}</h6>
                             <span className="small text-muted" style={{ fontSize: '0.75rem' }}>Filed: {disp.createdAt}</span>
                           </div>
-                          <span className={`badge px-2 py-1 rounded-pill ${
-                            disp.status === 'Resolved' ? 'bg-success text-white' : 'bg-warning text-white'
-                          }`}>
-                            {disp.status}
-                          </span>
+                          <div className="d-flex align-items-center gap-2">
+                            <span className={`badge px-2 py-1 rounded-pill ${disp.status === 'Resolved' ? 'bg-success text-white' : 'bg-warning text-white'
+                              }`}>
+                              {disp.status}
+                            </span>
+                            <button
+                              className="btn btn-sm btn-outline-danger border-0 rounded-circle"
+                              onClick={() => handleDeleteDispute(disp._id)}
+                              title="Delete Dispute"
+                            >
+                              <i className="bi bi-trash-fill"></i>
+                            </button>
+                          </div>
                         </div>
 
                         <div className="mb-3 p-3 bg-light rounded-3 border">
@@ -1032,7 +1666,7 @@ const AdminDashboard = () => {
         <div className="modal show d-block animate__animated animate__fadeIn" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', zIndex: 1050 }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden" style={{ border: '1.5px solid #e8ecf8' }}>
-              
+
               {/* Modal Header */}
               <div className="p-4 text-white" style={{ background: 'linear-gradient(135deg, #1a252f 0%, #2c3e50 100%)' }}>
                 <div className="d-flex justify-content-between align-items-center">
@@ -1046,7 +1680,7 @@ const AdminDashboard = () => {
 
               {/* Modal Body */}
               <div className="modal-body p-4 bg-white text-start">
-                
+
                 {/* User Header Info */}
                 <div className="d-flex align-items-center gap-3 mb-4 p-3 rounded-3" style={{ background: '#f8f9fa', border: '1px solid #e9ecef' }}>
                   <div className="rounded-circle bg-primary bg-opacity-10 text-primary p-3 fw-bold fs-4 text-center d-flex align-items-center justify-content-center" style={{ width: '56px', height: '56px' }}>
@@ -1075,7 +1709,7 @@ const AdminDashboard = () => {
                       type="button"
                       onClick={() => {
                         navigator.clipboard.writeText(selectedCredentials.email);
-                        alert('📋 Email / User ID copied to clipboard!');
+                        showClassyAlert('Email / User ID copied to clipboard!', 'Copied', 'success');
                       }}
                       title="Copy to Clipboard"
                     >
@@ -1095,8 +1729,8 @@ const AdminDashboard = () => {
                       className="form-control rounded-start-3 bg-light border-1 font-monospace fw-bold text-muted"
                       readOnly
                       value={selectedCredentials.role === 'Administrator' ? selectedCredentials.password : (showPlaintextInAuditor ? selectedCredentials.plainPassword : selectedCredentials.password)}
-                      style={{ 
-                        fontSize: (selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? '0.95rem' : '0.8rem', 
+                      style={{
+                        fontSize: (selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? '0.95rem' : '0.8rem',
                         letterSpacing: '0.5px'
                       }}
                     />
@@ -1117,7 +1751,7 @@ const AdminDashboard = () => {
                       onClick={() => {
                         const copyValue = (selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? selectedCredentials.plainPassword : selectedCredentials.password;
                         navigator.clipboard.writeText(copyValue);
-                        alert(`📋 ${(selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? 'Plaintext Password' : 'Secure Password record'} copied to clipboard!`);
+                        showClassyAlert(`${(selectedCredentials.role !== 'Administrator' && showPlaintextInAuditor) ? 'Plaintext Password' : 'Secure Password record'} copied to clipboard!`, 'Copied', 'success');
                       }}
                       title="Copy Value"
                     >
@@ -1186,7 +1820,7 @@ const AdminDashboard = () => {
         <div className="modal show d-block animate__animated animate__fadeIn" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', zIndex: 1050 }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden" style={{ border: '1.5px solid #e8ecf8' }}>
-              
+
               {/* Modal Header */}
               <div className="p-4 text-white" style={{ background: 'linear-gradient(135deg, #198754 0%, #146c43 100%)' }}>
                 <div className="d-flex justify-content-between align-items-center">
@@ -1210,14 +1844,14 @@ const AdminDashboard = () => {
                   {/* Full Name */}
                   <div className="mb-3">
                     <label htmlFor="adminName" className="form-label small fw-bold text-muted">👤 Full Officer Name</label>
-                    <input 
-                      type="text" 
-                      className="form-control rounded-3 p-2.5" 
-                      id="adminName" 
+                    <input
+                      type="text"
+                      className="form-control rounded-3 p-2.5"
+                      id="adminName"
                       required
                       placeholder="e.g. Inspector Gurpreet Singh"
                       value={adminForm.fullName}
-                      onChange={(e) => setAdminForm({...adminForm, fullName: e.target.value})}
+                      onChange={(e) => setAdminForm({ ...adminForm, fullName: e.target.value })}
                       style={{ border: '1.5px solid #cbd5e1' }}
                     />
                   </div>
@@ -1225,14 +1859,14 @@ const AdminDashboard = () => {
                   {/* Email */}
                   <div className="mb-3">
                     <label htmlFor="adminEmail" className="form-label small fw-bold text-muted">📧 Administrative Email Address</label>
-                    <input 
-                      type="email" 
-                      className="form-control rounded-3 p-2.5" 
-                      id="adminEmail" 
+                    <input
+                      type="email"
+                      className="form-control rounded-3 p-2.5"
+                      id="adminEmail"
                       required
                       placeholder="e.g. gurpreet@quicklabour.com"
                       value={adminForm.email}
-                      onChange={(e) => setAdminForm({...adminForm, email: e.target.value})}
+                      onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
                       style={{ border: '1.5px solid #cbd5e1' }}
                     />
                   </div>
@@ -1240,14 +1874,14 @@ const AdminDashboard = () => {
                   {/* Phone */}
                   <div className="mb-3">
                     <label htmlFor="adminPhone" className="form-label small fw-bold text-muted">📞 Contact Phone Number</label>
-                    <input 
-                      type="tel" 
-                      className="form-control rounded-3 p-2.5" 
-                      id="adminPhone" 
+                    <input
+                      type="tel"
+                      className="form-control rounded-3 p-2.5"
+                      id="adminPhone"
                       required
                       placeholder="e.g. +91 98765-43210"
                       value={adminForm.phone}
-                      onChange={(e) => setAdminForm({...adminForm, phone: e.target.value})}
+                      onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })}
                       style={{ border: '1.5px solid #cbd5e1' }}
                     />
                   </div>
@@ -1257,10 +1891,10 @@ const AdminDashboard = () => {
                     <label className="form-label small fw-bold text-muted d-block">🖼️ Profile Avatar Photo (Optional)</label>
                     <div className="d-flex align-items-center gap-3 p-2 rounded-3 bg-light" style={{ border: '1.5px dashed #cbd5e1' }}>
                       {adminForm.avatar ? (
-                        <img 
-                          src={adminForm.avatar} 
-                          alt="Preview" 
-                          className="rounded-circle border border-2 border-success shadow-sm" 
+                        <img
+                          src={adminForm.avatar}
+                          alt="Preview"
+                          className="rounded-circle border border-2 border-success shadow-sm"
                           style={{ width: '56px', height: '56px', objectFit: 'cover' }}
                         />
                       ) : (
@@ -1269,11 +1903,11 @@ const AdminDashboard = () => {
                         </div>
                       )}
                       <div className="flex-fill">
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          id="adminAvatarFile" 
-                          className="d-none" 
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="adminAvatarFile"
+                          className="d-none"
                           onChange={(e) => {
                             const file = e.target.files[0];
                             if (file) {
@@ -1285,16 +1919,16 @@ const AdminDashboard = () => {
                             }
                           }}
                         />
-                        <label 
-                          htmlFor="adminAvatarFile" 
+                        <label
+                          htmlFor="adminAvatarFile"
                           className="btn btn-primary btn-sm rounded-3 fw-bold px-3 py-2 text-nowrap"
                           style={{ cursor: 'pointer', background: 'linear-gradient(135deg, #0d6efd, #6610f2)', border: 'none' }}
                         >
                           Choose from Photos
                         </label>
                         {adminForm.avatar && (
-                          <button 
-                            type="button" 
+                          <button
+                            type="button"
                             className="btn btn-link text-danger btn-sm ms-2 p-0 text-decoration-none fw-bold"
                             onClick={() => setAdminForm({ ...adminForm, avatar: '' })}
                           >
@@ -1308,17 +1942,38 @@ const AdminDashboard = () => {
                     </div>
                   </div>
 
+                  {/* Access Level Dropdown */}
+                  <div className="mb-3">
+                    <label htmlFor="adminRoleType" className="form-label small fw-bold text-muted">🛡️ Authority Role / Access Level</label>
+                    <select
+                      className="form-select rounded-3 p-2.5"
+                      id="adminRoleType"
+                      required
+                      value={adminForm.roleType}
+                      onChange={(e) => setAdminForm({ ...adminForm, roleType: e.target.value })}
+                      style={{ border: '1.5px solid #cbd5e1' }}
+                    >
+                      <option value="super_admin">Super Admin (Full Access: All Tabs + Manage Admins & Disputes)</option>
+                      <option value="stats_viewer">Stats Analyst (Overview & Performance Graphs Only)</option>
+                      <option value="operations_manager">Operations Manager (Clients, Workers, Jobs, Reviews & Inquiries Only)</option>
+                      <option value="disputes_officer">Disputes Officer (Disputes & Escalations Desk Only)</option>
+                    </select>
+                    <div className="form-text small text-muted mt-1" style={{ fontSize: '0.75rem' }}>
+                      Determines which tabs and controls this administrator can access on the Admin Wallet Hub.
+                    </div>
+                  </div>
+
                   {/* Strong Password */}
                   <div className="mb-3">
                     <label htmlFor="adminPassword" className="form-label small fw-bold text-muted">🔑 Strong Password (8+ characters, mixed case, number & symbol)</label>
-                    <input 
-                      type="password" 
-                      className="form-control rounded-3 p-2.5" 
-                      id="adminPassword" 
+                    <input
+                      type="password"
+                      className="form-control rounded-3 p-2.5"
+                      id="adminPassword"
                       required
                       placeholder="e.g. AdminSecure@1313"
                       value={adminForm.password}
-                      onChange={(e) => setAdminForm({...adminForm, password: e.target.value})}
+                      onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
                       style={{ border: '1.5px solid #cbd5e1' }}
                     />
                     <div className="form-text small text-muted mt-1" style={{ fontSize: '0.75rem' }}>
@@ -1330,15 +1985,15 @@ const AdminDashboard = () => {
 
                 {/* Modal Footer */}
                 <div className="modal-footer border-0 bg-light rounded-bottom-4 py-3 d-flex gap-2">
-                  <button 
-                    type="button" 
-                    className="btn btn-outline-secondary flex-fill rounded-3 py-2 fw-bold" 
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary flex-fill rounded-3 py-2 fw-bold"
                     onClick={() => setShowAddAdminModal(false)}
                   >
                     Cancel
                   </button>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     className="btn btn-success flex-fill rounded-3 py-2 fw-bold"
                     style={{ background: 'linear-gradient(135deg, #198754, #146c43)', border: 'none' }}
                     disabled={creatingAdmin}
@@ -1358,6 +2013,38 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* ── Classy Custom Alert Modal ── */}
+      {classyAlert.show && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '400px' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: '#ffffff' }}>
+              <div className="mb-3">
+                {classyAlert.type === 'danger' || classyAlert.type === 'error' ? (
+                  <div className="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle animate-pulse" style={{ width: '64px', height: '64px' }}>
+                    <i className="bi bi-exclamation-triangle-fill fs-2"></i>
+                  </div>
+                ) : (
+                  <div className="d-inline-flex align-items-center justify-content-center bg-success bg-opacity-10 text-success rounded-circle" style={{ width: '64px', height: '64px' }}>
+                    <i className="bi bi-check-circle-fill fs-2"></i>
+                  </div>
+                )}
+              </div>
+              <h5 className="fw-800 text-dark mb-2" style={{ fontWeight: 800 }}>{classyAlert.title}</h5>
+              <p className="text-muted px-2 mb-4" style={{ fontSize: '0.92rem', lineHeight: '1.5', fontWeight: 500 }}>
+                {classyAlert.message}
+              </p>
+              <button 
+                type="button" 
+                className="btn btn-primary w-100 rounded-12 py-2.5 fw-bold"
+                style={{ background: classyAlert.type === 'danger' || classyAlert.type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}
+                onClick={() => setClassyAlert({ ...classyAlert, show: false })}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

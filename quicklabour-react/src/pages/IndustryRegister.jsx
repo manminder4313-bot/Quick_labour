@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 const INDUSTRY_TYPES = [
   "Construction & Real Estate",
   "Manufacturing & Factory",
@@ -176,7 +184,7 @@ const IndustryRegister = () => {
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Company / Organization Name *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-building" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                      <input type="text" style={inputStyle('companyName')} placeholder="e.g. Sharma Construction Ltd." value={form.companyName} onChange={e => update('companyName', e.target.value)} />
+                      <input type="text" style={inputStyle('companyName')} placeholder="e.g. Sharma Construction Ltd." value={form.companyName} onChange={e => update('companyName', toTitleCase(e.target.value))} />
                     </div>
                     {errors.companyName && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.companyName}</span>}
                   </div>
@@ -230,7 +238,7 @@ const IndustryRegister = () => {
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Contact Person Name *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-person" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                      <input type="text" style={inputStyle('contactPerson')} placeholder="HR Manager / Owner name" value={form.contactPerson} onChange={e => update('contactPerson', e.target.value)} />
+                      <input type="text" style={inputStyle('contactPerson')} placeholder="HR Manager / Owner name" value={form.contactPerson} onChange={e => update('contactPerson', toTitleCase(e.target.value))} />
                     </div>
                     {errors.contactPerson && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.contactPerson}</span>}
                   </div>
@@ -240,7 +248,7 @@ const IndustryRegister = () => {
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Business Phone *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-telephone" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                      <input type="text" style={inputStyle('phone')} placeholder="+91 98765 43210" value={form.phone} onChange={e => update('phone', e.target.value)} />
+                      <input type="text" style={inputStyle('phone')} placeholder="e.g. 9876543210" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, ''))} />
                     </div>
                     {errors.phone && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.phone}</span>}
                   </div>
@@ -250,7 +258,7 @@ const IndustryRegister = () => {
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Business Address *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-geo-alt" style={{ position: 'absolute', left: 14, top: 14, color: '#94a3b8' }} />
-                      <textarea rows={2} style={{ ...inputStyle('address'), paddingTop: 12, resize: 'none', lineHeight: 1.5 }} placeholder="Factory / office full address" value={form.address} onChange={e => update('address', e.target.value)} />
+                      <textarea rows={2} style={{ ...inputStyle('address'), paddingTop: 12, resize: 'none', lineHeight: 1.5 }} placeholder="Factory / office full address" value={form.address} onChange={e => update('address', toTitleCase(e.target.value))} />
                     </div>
                     {errors.address && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.address}</span>}
                   </div>
@@ -296,13 +304,18 @@ const IndustryRegister = () => {
                     </div>
                   </div>
 
-                  <div className="mb-3">
+                   <div className="mb-3">
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Confirm Password *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-shield-lock" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                       <input type="password" style={inputStyle('confirmPassword')} placeholder="Re-enter your password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} />
                     </div>
                     {errors.confirmPassword && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.confirmPassword}</span>}
+                    {form.confirmPassword && form.password !== form.confirmPassword && (
+                      <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 600, display: 'block', marginTop: 4 }}>
+                        ❌ Passwords do not match!
+                      </span>
+                    )}
                   </div>
 
                   {/* Security note */}

@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
 import ChatWidget from '../components/ChatWidget';
 
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 const CountdownTimer = ({ job }) => {
   const [timeLeft, setTimeLeft] = useState('15:00');
 
@@ -86,27 +94,59 @@ const WorkerDashboard = () => {
   const [walletBalance, setWalletBalance] = useState(Number(sessionStorage.getItem('userWalletBalance') || 0));
   const [showAddWalletModal, setShowAddWalletModal] = useState(false);
   const [showQrCodeModal, setShowQrCodeModal] = useState(false);
+
+  // Unified Wallet Hub Modal States
+  const [showWalletHubModal, setShowWalletHubModal] = useState(false);
+  const [activeWalletTab, setActiveWalletTab] = useState('scanner'); // 'scanner', 'add', 'withdraw', 'history'
+
   const [walletAmount, setWalletAmount] = useState('');
   const [walletMethod, setWalletMethod] = useState('upi'); // 'upi', 'card', 'netbanking'
   const [upiId, setUpiId] = useState('');
-  const [netBank, setNetBank] = useState('sbi');
+  const [netBank, setNetBank] = useState('');
+  const [netBankHolderName, setNetBankHolderName] = useState('');
+  const [netBankCustomerId, setNetBankCustomerId] = useState('');
   const [isAddingMoney, setIsAddingMoney] = useState(false);
   const [isPayingWithWallet, setIsPayingWithWallet] = useState(false);
+
+  // Withdraw Form States
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [bankName, setBankName] = useState('SBI');
+  const [accountNo, setAccountNo] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
+  const [upiWithdrawId, setUpiWithdrawId] = useState('');
+  const [withdrawMethod, setWithdrawMethod] = useState('bank'); // 'bank', 'upi'
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [showWithdrawOtp, setShowWithdrawOtp] = useState(false);
+  const [withdrawOtp, setWithdrawOtp] = useState('');
+  const [withdrawOtpNotification, setWithdrawOtpNotification] = useState('');
+  const [classyAlert, setClassyAlert] = useState({ show: false, title: '', message: '', type: 'error' });
+  const showClassyAlert = (message, title = 'Alert', type = 'danger') => {
+    setClassyAlert({ show: true, title, message, type });
+  };
   const [selectedPlan, setSelectedPlan] = useState('basic'); // 'basic', 'standard', 'premium'
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [showCardForm, setShowCardForm] = useState(false);
+  const [subPaymentMethod, setSubPaymentMethod] = useState('card'); // 'card', 'wallet'
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
+  const [showCvc, setShowCvc] = useState(false);
   const [cardName, setCardName] = useState(sessionStorage.getItem('userName') || '');
   const [cardError, setCardError] = useState('');
 
   // Profile reactive states
-  const [profileName, setProfileName] = useState(sessionStorage.getItem('userName') || 'Ramesh Kumar');
+  const initialName = sessionStorage.getItem('userName') || 'Ramesh Kumar';
+  const [profileName, setProfileName] = useState(initialName);
   const [profilePhone, setProfilePhone] = useState(sessionStorage.getItem('userPhone') || '+91 99887 76655');
   const [profileAddress, setProfileAddress] = useState(sessionStorage.getItem('userAddress') || 'Bandra, Mumbai');
-  const [profileAvatar, setProfileAvatar] = useState(sessionStorage.getItem('userAvatar') || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80');
+  const [profileAvatar, setProfileAvatar] = useState(() => {
+    const stored = sessionStorage.getItem('userAvatar');
+    if (!stored || stored.includes('images.unsplash.com/photo-1506794778202-cad84cf45f1d') || stored.includes('images.unsplash.com/photo-1534528741775-53994a69daeb')) {
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(initialName)}&background=random&color=fff&size=150`;
+    }
+    return stored;
+  });
   const [profileOccupation, setProfileOccupation] = useState(sessionStorage.getItem('userOccupation') || 'Professional Plumber');
   const [workerLat, setWorkerLat] = useState(Number(sessionStorage.getItem('userLatitude')) || null);
   const [workerLng, setWorkerLng] = useState(Number(sessionStorage.getItem('userLongitude')) || null);
@@ -334,6 +374,14 @@ const WorkerDashboard = () => {
       setProfileAddress(res.address);
       setProfileAvatar(res.avatar);
       setProfileOccupation(res.occupation);
+      
+      // Sync with sessionStorage so header updates in real-time
+      sessionStorage.setItem('userName', res.fullName);
+      sessionStorage.setItem('userPhone', res.phone);
+      sessionStorage.setItem('userAddress', res.address);
+      sessionStorage.setItem('userAvatar', res.avatar);
+      sessionStorage.setItem('userOccupation', res.occupation);
+      
       if (res.latitude !== undefined) {
         setWorkerLat(res.latitude);
         sessionStorage.setItem('userLatitude', res.latitude);
@@ -426,9 +474,6 @@ const WorkerDashboard = () => {
   useEffect(() => {
     fetchJobs();
 
-    // Set up real-time polling to check for new requests every 5 seconds
-    const intervalId = setInterval(fetchJobs, 5000);
-
     // Sync complete worker profile details from database on mount
     api.getProfile().then(user => {
       if (user.fullName) setProfileName(user.fullName);
@@ -464,8 +509,6 @@ const WorkerDashboard = () => {
       sessionStorage.setItem('userPoints', user.points !== undefined ? user.points : 0);
       sessionStorage.setItem('userAcceptedJobs', user.acceptedJobsCount !== undefined ? user.acceptedJobsCount : 0);
     }).catch(err => console.error(err));
-
-    return () => clearInterval(intervalId);
   }, []);
 
   const handleToggleOnline = async () => {
@@ -579,22 +622,118 @@ const WorkerDashboard = () => {
     setCardCvc(value.substring(0, 4));
   };
 
+  const getTransactions = () => {
+    const userId = sessionStorage.getItem('userId') || 'default';
+    const key = `quicklabour_transactions_${userId}`;
+    const stored = localStorage.getItem(key);
+    if (!stored) {
+      const initialTxs = [
+        {
+          id: 'TXN-BONUS',
+          date: new Date(Date.now() - 3600000).toLocaleString(),
+          type: 'Sign-up Bonus',
+          amount: 50,
+          isCredit: true,
+          status: 'Success'
+        }
+      ];
+      localStorage.setItem(key, JSON.stringify(initialTxs));
+      return initialTxs;
+    }
+    return JSON.parse(stored);
+  };
+
+  const addTransaction = (type, amount, isCredit, status = 'Success') => {
+    const userId = sessionStorage.getItem('userId') || 'default';
+    const key = `quicklabour_transactions_${userId}`;
+    const txs = getTransactions();
+    const newTx = {
+      id: 'TXN-' + Math.floor(100000 + Math.random() * 900000),
+      type,
+      amount,
+      isCredit,
+      status,
+      date: new Date().toLocaleString()
+    };
+    txs.unshift(newTx);
+    localStorage.setItem(key, JSON.stringify(txs));
+  };
+
+  const handleWithdrawSubmit = async (e) => {
+    e.preventDefault();
+    if (!withdrawAmount || isNaN(withdrawAmount) || Number(withdrawAmount) <= 0) {
+      showClassyAlert("Please enter a valid amount.", "Invalid Input");
+      return;
+    }
+    const amt = Number(withdrawAmount);
+    if (amt > walletBalance) {
+      showClassyAlert("Insufficient wallet balance.", "Insufficient Balance");
+      return;
+    }
+
+    if (!showWithdrawOtp) {
+      setIsWithdrawing(true);
+      try {
+        const res = await api.requestWithdrawalOtp(amt);
+        setShowWithdrawOtp(true);
+        setWithdrawOtp('');
+        setWithdrawOtpNotification(`📱 SMS Received on ${sessionStorage.getItem('userPhone') || 'registered phone number'}: Your withdrawal verification OTP is: ${res.otp}`);
+        setActionAlert(`📱 A 4-digit verification code has been sent to your phone number.`);
+        setTimeout(() => setActionAlert(''), 5000);
+      } catch (err) {
+        showClassyAlert("Failed to send verification OTP: " + err.message, "OTP Error");
+      } finally {
+        setIsWithdrawing(false);
+      }
+      return;
+    }
+
+    if (!withdrawOtp || withdrawOtp.length < 4) {
+      showClassyAlert("Please enter the 4-digit verification OTP.", "Verification Required");
+      return;
+    }
+
+    setIsWithdrawing(true);
+    try {
+      const res = await api.withdrawWalletMoney(amt, withdrawOtp);
+      setWalletBalance(res.walletBalance);
+      sessionStorage.setItem('userWalletBalance', res.walletBalance);
+
+      addTransaction(`Withdrawal (${withdrawMethod.toUpperCase()})`, amt, false);
+
+      setActionAlert(`💸 Withdrawal of ₹${amt} processed and transferred successfully!`);
+      setWithdrawAmount('');
+      setWithdrawOtp('');
+      setShowWithdrawOtp(false);
+      setWithdrawOtpNotification('');
+      setTimeout(() => setActionAlert(''), 6000);
+    } catch (err) {
+      showClassyAlert("Withdrawal verification failed: " + err.message, "Verification Failed");
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
+
   const handleAddMoneySubmit = async (e) => {
     e.preventDefault();
     if (!walletAmount || isNaN(walletAmount) || Number(walletAmount) <= 0) {
-      alert("Please enter a valid amount.");
+      showClassyAlert("Please enter a valid amount.", "Invalid Input");
       return;
     }
     setIsAddingMoney(true);
     try {
       const res = await api.addWalletMoney(Number(walletAmount), walletMethod);
       setWalletBalance(res.walletBalance);
+      sessionStorage.setItem('userWalletBalance', res.walletBalance);
+      
+      addTransaction('Wallet Deposit', Number(walletAmount), true);
+
       setActionAlert(`🎉 Successfully recharged ₹${walletAmount} to your wallet!`);
       setShowAddWalletModal(false);
       setWalletAmount('');
       setTimeout(() => setActionAlert(''), 6000);
     } catch (err) {
-      alert("Failed to add money: " + err.message);
+      showClassyAlert("Failed to add money: " + err.message, "Deposit Failed");
     } finally {
       setIsAddingMoney(false);
     }
@@ -609,13 +748,31 @@ const WorkerDashboard = () => {
       setPaymentSuccess(true);
       setActionAlert(`🎉 Successfully recharged points using wallet balance! Added ${res.pointsAdded} points.`);
       
+      // Log transaction to admin wallet history in localStorage
+      try {
+        const adminTxs = JSON.parse(localStorage.getItem('quicklabour_transactions_admin') || '[]');
+        const cost = planType === 'basic' ? 99 : planType === 'standard' ? 199 : 499;
+        adminTxs.unshift({
+          id: 'TXN-' + Math.floor(100000 + Math.random() * 900000),
+          type: `Points Subscription (Wallet - ${planType.toUpperCase()})`,
+          amount: cost,
+          isCredit: true,
+          status: 'Success',
+          date: new Date().toLocaleString(),
+          workerName: profileName || 'Worker'
+        });
+        localStorage.setItem('quicklabour_transactions_admin', JSON.stringify(adminTxs));
+      } catch (err) {
+        console.warn('Failed to log admin transaction:', err);
+      }
+
       setTimeout(() => {
         setPaymentSuccess(false);
         setShowSubscriptionModal(false);
         setActionAlert('');
       }, 3500);
     } catch (err) {
-      alert("Recharge failed: " + err.message);
+      showClassyAlert("Recharge failed: " + err.message, "Recharge Failed");
     } finally {
       setIsPayingWithWallet(false);
     }
@@ -628,6 +785,17 @@ const WorkerDashboard = () => {
     if (!showCardForm) {
       setShowCardForm(true);
       setCardError('');
+      return;
+    }
+
+    if (subPaymentMethod === 'wallet') {
+      const cost = selectedPlan === 'basic' ? 99 : selectedPlan === 'standard' ? 199 : 499;
+      if (walletBalance < cost) {
+        setCardError(`❌ Insufficient wallet balance (Available: ₹${Number(walletBalance).toFixed(2)}).`);
+        return;
+      }
+      setCardError('');
+      await handleRechargePointsWithWallet(selectedPlan);
       return;
     }
 
@@ -675,6 +843,24 @@ const WorkerDashboard = () => {
       setPaymentSuccess(true);
       setActionAlert(`🎉 Successful! Subscribed to ${selectedPlan.toUpperCase()} plan. Added ${verifyRes.pointsAdded} points.`);
 
+      // Log transaction to admin wallet history in localStorage
+      try {
+        const adminTxs = JSON.parse(localStorage.getItem('quicklabour_transactions_admin') || '[]');
+        const cost = selectedPlan === 'basic' ? 105 : selectedPlan === 'standard' ? 210 : 525; // with GST
+        adminTxs.unshift({
+          id: 'TXN-' + Math.floor(100000 + Math.random() * 900000),
+          type: `Points Subscription (Stripe - ${selectedPlan.toUpperCase()})`,
+          amount: cost,
+          isCredit: true,
+          status: 'Success',
+          date: new Date().toLocaleString(),
+          workerName: profileName || 'Worker'
+        });
+        localStorage.setItem('quicklabour_transactions_admin', JSON.stringify(adminTxs));
+      } catch (err) {
+        console.warn('Failed to log admin transaction:', err);
+      }
+
       setTimeout(() => {
         setPaymentSuccess(false);
         setShowSubscriptionModal(false);
@@ -717,7 +903,7 @@ const WorkerDashboard = () => {
             width: '410px',
             background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
             backdropFilter: 'blur(20px)',
-            webkitBackdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 40px 2px rgba(99, 102, 241, 0.25)',
             color: '#ffffff',
@@ -933,13 +1119,13 @@ const WorkerDashboard = () => {
               </div>
             </div>
             <div className="col-xl-4 col-md-6 col-sm-12">
-              <div className="dashboard-stat-card cursor-pointer" onClick={() => setShowQrCodeModal(true)} style={{ cursor: 'pointer' }}>
+              <div className="dashboard-stat-card cursor-pointer" onClick={() => { setActiveWalletTab('scanner'); setShowWalletHubModal(true); }} style={{ cursor: 'pointer' }}>
                 <div className="stat-icon-wrapper purple">
                   <i className="bi bi-wallet-fill"></i>
                 </div>
                 <div>
                   <div className="stat-number">₹{Number(walletBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                  <div className="stat-label">Wallet Balance (QR)</div>
+                  <div className="stat-label">Wallet Balance (QR Hub)</div>
                 </div>
               </div>
             </div>
@@ -1530,34 +1716,21 @@ const WorkerDashboard = () => {
                     ⚡ Subscriptions & Points
                   </h5>
                   <span className="badge bg-warning text-dark fw-800" style={{ fontSize: '0.72rem' }}>
-                    {acceptedJobs < 2 ? 'Free Account' : 'Paid Account'}
+                    {workerPoints > 0 ? 'Active' : 'Points Exhausted'}
                   </span>
                 </div>
                 
                 <div className="p-3 rounded-16 mb-3" style={{ background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                  <div className="d-flex justify-content-between align-items-center mb-2">
+                  <div className="d-flex justify-content-between align-items-center">
                     <span className="small text-white-50">Points Balance</span>
                     <span className="fw-900 text-warning" style={{ fontSize: '1.25rem' }}>{workerPoints} PTS</span>
-                  </div>
-                  <div className="d-flex justify-content-between align-items-center">
-                    <span className="small text-white-50">Free Jobs Accepted</span>
-                    <span className="fw-800">{Math.min(acceptedJobs, 2)} / 2</span>
-                  </div>
-                  <div className="progress mt-2" style={{ height: '6px', background: 'rgba(255,255,255,0.1)' }}>
-                    <div 
-                      className="progress-bar bg-warning" 
-                      role="progressbar" 
-                      style={{ width: `${Math.min((acceptedJobs / 2) * 100, 100)}%` }}
-                    ></div>
                   </div>
                 </div>
 
                 <p className="small text-white-50 mb-3" style={{ lineHeight: '1.4' }}>
-                  {acceptedJobs < 2 
-                    ? `You can accept ${2 - acceptedJobs} more job requests for free! After that, purchase a subscription to get points.`
-                    : workerPoints >= 10 
-                      ? 'Each job acceptance costs 10 points. Buy more points to keep accepting jobs.'
-                      : '⚠️ Insufficient points balance! Please purchase points to accept job invitations.'
+                  {workerPoints >= 10 
+                    ? 'Each job acceptance costs 10 points. Buy more points to keep accepting jobs.'
+                    : '⚠️ Insufficient points balance! Please purchase points to accept job invitations.'
                   }
                 </p>
 
@@ -1662,7 +1835,7 @@ const WorkerDashboard = () => {
                       className="form-control rounded-12" 
                       placeholder="Enter full name" 
                       value={editName} 
-                      onChange={(e) => setEditName(e.target.value)}
+                      onChange={(e) => setEditName(toTitleCase(e.target.value))}
                       required
                     />
                   </div>
@@ -1705,7 +1878,7 @@ const WorkerDashboard = () => {
                       className="form-control rounded-12" 
                       placeholder="Enter phone number" 
                       value={editPhone} 
-                      onChange={(e) => setEditPhone(e.target.value)}
+                      onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, ''))}
                       required
                     />
                   </div>
@@ -1719,7 +1892,7 @@ const WorkerDashboard = () => {
                         className="form-control rounded-12" 
                         placeholder="Enter address" 
                         value={editAddress} 
-                        onChange={(e) => setEditAddress(e.target.value)}
+                        onChange={(e) => setEditAddress(toTitleCase(e.target.value))}
                         required
                         style={{ flex: 1 }}
                       />
@@ -2010,7 +2183,7 @@ const WorkerDashboard = () => {
                       </div>
                     </div>
 
-                    {/* Secure Card input fields directly inside checkout */}
+                    {/* Secure Card / Wallet input fields directly inside checkout */}
                     {showCardForm && (
                       <div className="card border-0 p-4 mb-4 animate-scale-up text-white animate-notification-toast" style={{
                         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
@@ -2019,79 +2192,144 @@ const WorkerDashboard = () => {
                       }}>
                         <div className="d-flex align-items-center justify-content-between mb-4">
                           <h6 className="fw-900 text-white m-0 d-flex align-items-center gap-2" style={{ fontSize: '1.05rem' }}>
-                            <i className="bi bi-credit-card-2-front-fill text-warning"></i>
-                            Stripe Elements Card Gateway
+                            <i className="bi bi-shield-fill-check text-warning animate-pulse"></i>
+                            Select Payment Method
                           </h6>
                           <div className="d-flex gap-1.5 align-items-center bg-white bg-opacity-10 px-2.5 py-1.5 rounded-pill" style={{ fontSize: '0.72rem' }}>
-                            <i className="bi bi-shield-fill-check text-success"></i>
-                            <span className="text-white-50">Secure Test Sandbox</span>
+                            <span className="text-white-50">Secure Checkout</span>
                           </div>
                         </div>
 
-                        {/* Cardholder Name */}
-                        <div className="mb-3">
-                          <label className="form-label small fw-700 text-white-50">Cardholder Name</label>
-                          <div className="input-group">
-                            <span className="input-group-text bg-white bg-opacity-5 border-white border-opacity-10 text-white-50" style={{ borderRadius: '12px 0 0 12px' }}>
-                              <i className="bi bi-person-fill"></i>
-                            </span>
-                            <input 
-                              type="text" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark" 
-                              style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', fontSize: '0.95rem', color: '#000000' }}
-                              placeholder="Enter name on card" 
-                              value={cardName} 
-                              onChange={(e) => setCardName(e.target.value)}
-                              required
-                            />
-                          </div>
+                        {/* Payment Method Selector Tabs */}
+                        <div className="d-flex gap-2 mb-4 p-1 rounded-12 bg-white bg-opacity-10" style={{ border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                          <button
+                            type="button"
+                            className={`btn btn-sm flex-fill py-2 fw-bold rounded-10 border-0 ${subPaymentMethod === 'card' ? 'bg-warning text-dark shadow-sm' : 'text-white bg-transparent'}`}
+                            onClick={() => setSubPaymentMethod('card')}
+                            style={{ transition: 'all 0.25s' }}
+                          >
+                            <i className="bi bi-credit-card-2-front me-1.5"></i> Stripe Card
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm flex-fill py-2 fw-bold rounded-10 border-0 ${subPaymentMethod === 'wallet' ? 'bg-warning text-dark shadow-sm' : 'text-white bg-transparent'}`}
+                            onClick={() => setSubPaymentMethod('wallet')}
+                            style={{ transition: 'all 0.25s' }}
+                          >
+                            <i className="bi bi-wallet2 me-1.5"></i> Pay from Wallet
+                          </button>
                         </div>
 
-                        {/* Card Number */}
-                        <div className="mb-3">
-                          <label className="form-label small fw-700 text-white-50">Card Number</label>
-                          <div className="input-group">
-                            <span className="input-group-text bg-white bg-opacity-5 border-white border-opacity-10 text-white-50" style={{ borderRadius: '12px 0 0 12px' }}>
-                              <i className="bi bi-credit-card-fill"></i>
-                            </span>
-                            <input 
-                              type="text" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace" 
-                              style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', letterSpacing: '2px', fontSize: '0.95rem', color: '#000000' }}
-                              placeholder="4242 4242 4242 4242" 
-                              value={cardNumber} 
-                              onChange={handleCardNumberChange}
-                              required
-                            />
-                          </div>
-                        </div>
+                        {subPaymentMethod === 'card' ? (
+                          <>
+                            {/* Cardholder Name */}
+                            <div className="mb-3">
+                              <label className="form-label small fw-700 text-white-50">Cardholder Name</label>
+                              <div className="input-group">
+                                <span className="input-group-text bg-white bg-opacity-5 border-white border-opacity-10 text-white-50" style={{ borderRadius: '12px 0 0 12px' }}>
+                                  <i className="bi bi-person-fill"></i>
+                                </span>
+                                <input 
+                                  type="text" 
+                                  className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark" 
+                                  style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', fontSize: '0.95rem', color: '#000000' }}
+                                  placeholder="Enter name on card" 
+                                  value={cardName} 
+                                  onChange={(e) => setCardName(toTitleCase(e.target.value))}
+                                  required
+                                />
+                              </div>
+                            </div>
 
-                        <div className="row g-3 mb-3">
-                          <div className="col-6">
-                            <label className="form-label small fw-700 text-white-50">Expiration Date</label>
-                            <input 
-                              type="text" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace text-center" 
-                              style={{ borderRadius: '12px', fontSize: '0.95rem', color: '#000000' }}
-                              placeholder="MM / YY" 
-                              value={cardExpiry} 
-                              onChange={handleCardExpiryChange}
-                              required
-                            />
+                            {/* Card Number */}
+                            <div className="mb-3">
+                              <label className="form-label small fw-700 text-white-50">Card Number</label>
+                              <div className="input-group">
+                                <span className="input-group-text bg-white bg-opacity-5 border-white border-opacity-10 text-white-50" style={{ borderRadius: '12px 0 0 12px' }}>
+                                  <i className="bi bi-credit-card-fill"></i>
+                                </span>
+                                <input 
+                                  type="text" 
+                                  className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace" 
+                                  style={{ borderRadius: '0 12px 12px 0', borderLeft: 'none', letterSpacing: '2px', fontSize: '0.95rem', color: '#000000' }}
+                                  placeholder="1234 5678 9012 3456" 
+                                  value={cardNumber} 
+                                  onChange={handleCardNumberChange}
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <div className="row g-3 mb-3">
+                              <div className="col-6">
+                                <label className="form-label small fw-700 text-white-50">Expiration Date</label>
+                                <input 
+                                  type="text" 
+                                  className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace text-center" 
+                                  style={{ borderRadius: '12px', fontSize: '0.95rem', color: '#000000' }}
+                                  placeholder="MM / YY" 
+                                  value={cardExpiry} 
+                                  onChange={handleCardExpiryChange}
+                                  required
+                                />
+                              </div>
+                              <div className="col-6">
+                                <label className="form-label small fw-700 text-white-50">CVC / CVV</label>
+                                <div className="input-group">
+                                  <input 
+                                    type={showCvc ? "text" : "password"} 
+                                    className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace text-center rounded-start-12" 
+                                    style={{ fontSize: '0.95rem', color: '#000000' }}
+                                    placeholder="•••" 
+                                    value={cardCvc} 
+                                    onChange={handleCardCvcChange}
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    maxLength="4"
+                                    required
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-light border-white border-opacity-10 bg-white bg-opacity-5 text-white-50 rounded-end-12 d-flex align-items-center justify-content-center"
+                                    onClick={() => setShowCvc(!showCvc)}
+                                    style={{ borderColor: 'rgba(255, 255, 255, 0.1)' }}
+                                  >
+                                    <i className={`bi ${showCvc ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center py-4 px-2 animate-scale-up">
+                            <i className="bi bi-wallet2 text-warning display-5 mb-3 d-block animate-bounce"></i>
+                            <div className="small text-white-50 mb-1">Available Wallet Balance</div>
+                            <h3 className="fw-extrabold text-white mb-2">₹{Number(walletBalance).toFixed(2)}</h3>
+                            
+                            <div className="p-3 rounded-12 bg-white bg-opacity-5 border border-white border-opacity-10 text-start mt-3">
+                              <div className="d-flex justify-content-between text-white-50 small mb-1.5">
+                                <span>Recharge Price:</span>
+                                <span className="text-white fw-bold">₹{selectedPlan === 'basic' ? '100' : selectedPlan === 'standard' ? '200' : '500'}.00</span>
+                              </div>
+                              <div className="d-flex justify-content-between text-white-50 small mb-1.5">
+                                <span>GST Waiver Discount:</span>
+                                <span className="text-success fw-bold">- ₹{selectedPlan === 'basic' ? '5' : selectedPlan === 'standard' ? '10' : '25'}.00</span>
+                              </div>
+                              <hr className="my-2 border-white border-opacity-10" />
+                              <div className="d-flex justify-content-between text-white small">
+                                <span className="fw-bold">Total Wallet Debit:</span>
+                                <span className="text-warning fw-extrabold fs-5">₹{selectedPlan === 'basic' ? '99' : selectedPlan === 'standard' ? '199' : '499'}.00</span>
+                              </div>
+                            </div>
+                            
+                            {walletBalance < (selectedPlan === 'basic' ? 99 : selectedPlan === 'standard' ? 199 : 499) && (
+                              <div className="alert alert-danger py-2 px-3 mt-3 rounded-12 border-0 small fw-bold mb-0 text-start" style={{ background: 'rgba(220, 53, 69, 0.25)', color: '#ea868f' }}>
+                                <i className="bi bi-exclamation-triangle-fill me-1.5"></i>
+                                Insufficient wallet balance to purchase this plan. Please deposit money to your wallet or pay using a credit card.
+                              </div>
+                            )}
                           </div>
-                          <div className="col-6">
-                            <label className="form-label small fw-700 text-white-50">CVC / CVV</label>
-                            <input 
-                              type="password" 
-                              className="form-control bg-white bg-opacity-5 border-white border-opacity-10 text-dark font-monospace text-center" 
-                              style={{ borderRadius: '12px', fontSize: '0.95rem', color: '#000000' }}
-                              placeholder="•••" 
-                              value={cardCvc} 
-                              onChange={handleCardCvcChange}
-                              required
-                            />
-                          </div>
-                        </div>
+                        )}
 
                         {cardError && (
                           <div className="alert alert-danger py-2.5 px-3 rounded-12 border-0 small fw-700 mb-0 d-flex align-items-center gap-1.5" style={{ background: 'rgba(220, 53, 69, 0.15)', color: '#ea868f' }}>
@@ -2167,12 +2405,16 @@ const WorkerDashboard = () => {
                       </div>
                       <div className="d-flex justify-content-between py-2 border-bottom border-dashed text-muted" style={{ fontSize: '0.88rem' }}>
                         <span>Government GST (5%):</span>
-                        <strong className="text-dark fw-700">₹{selectedPlan === 'basic' ? '5' : selectedPlan === 'standard' ? '10' : '25'}.00</strong>
+                        <strong className="text-dark fw-700">
+                          {showCardForm && subPaymentMethod === 'wallet' ? '₹0.00 (Waived)' : `₹${selectedPlan === 'basic' ? '5' : selectedPlan === 'standard' ? '10' : '25'}.00`}
+                        </strong>
                       </div>
                       <div className="d-flex justify-content-between pt-3 text-dark">
                         <span className="fw-900" style={{ fontSize: '1.05rem' }}>Total Payable Amount:</span>
                         <strong className="fw-900" style={{ fontSize: '1.35rem', letterSpacing: '-0.02em', color: '#0a2540' }}>
-                          ₹{selectedPlan === 'basic' ? '105' : selectedPlan === 'standard' ? '210' : '525'}.00
+                          ₹{showCardForm && subPaymentMethod === 'wallet' 
+                            ? (selectedPlan === 'basic' ? '99' : selectedPlan === 'standard' ? '199' : '499') 
+                            : (selectedPlan === 'basic' ? '105' : selectedPlan === 'standard' ? '210' : '525')}.00
                         </strong>
                       </div>
                     </div>
@@ -2189,7 +2431,7 @@ const WorkerDashboard = () => {
                             setShowSubscriptionModal(false);
                           }
                         }}
-                        disabled={isSubscribing}
+                        disabled={isSubscribing || isPayingWithWallet}
                         style={{ fontSize: '0.95rem', borderRadius: '16px' }}
                       >
                         {showCardForm ? 'Back to Plans' : 'Cancel Transaction'}
@@ -2214,16 +2456,18 @@ const WorkerDashboard = () => {
                               : '0 10px 15px -3px rgba(10, 37, 64, 0.3)',
                         }}
                         onClick={handlePurchaseSubscription}
-                        disabled={isSubscribing}
+                        disabled={isSubscribing || isPayingWithWallet}
                       >
-                        {isSubscribing ? (
+                        {isSubscribing || isPayingWithWallet ? (
                           <>
                             <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                             Authorizing Security...
                           </>
                         ) : showCardForm ? (
                           <>
-                            <i className="bi bi-shield-lock-fill me-2" style={{ opacity: 0.8 }}></i> Confirm & Pay ₹{selectedPlan === 'basic' ? '105' : selectedPlan === 'standard' ? '210' : '525'}.00
+                            <i className="bi bi-shield-lock-fill me-2" style={{ opacity: 0.8 }}></i> Confirm & Pay ₹{subPaymentMethod === 'wallet' 
+                              ? (selectedPlan === 'basic' ? '99' : selectedPlan === 'standard' ? '199' : '499') 
+                              : (selectedPlan === 'basic' ? '105' : selectedPlan === 'standard' ? '210' : '525')}.00
                           </>
                         ) : (
                           <>
@@ -2241,233 +2485,561 @@ const WorkerDashboard = () => {
         </div>
       )}
 
-      {/* ── Add Money to Wallet Modal ── */}
-      {showAddWalletModal && (
+      {/* ── Unified Wallet Hub Modal ── */}
+      {showWalletHubModal && (
         <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-dialog modal-dialog-centered modal-lg">
             <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
               
               {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', borderBottom: 'none' }}>
-                <h5 className="modal-title fw-800 m-0"><i className="bi bi-wallet-fill me-2"></i>Add Money to Wallet</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowAddWalletModal(false)}></button>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)', borderBottom: 'none' }}>
+                <div className="d-flex align-items-center gap-3">
+                  <div className="rounded-3 p-2 bg-white bg-opacity-20 d-flex align-items-center justify-content-center" style={{ width: '45px', height: '45px' }}>
+                    <i className="bi bi-wallet2 fs-4"></i>
+                  </div>
+                  <div>
+                    <h5 className="modal-title fw-800 m-0 text-white">Labour Wallet Hub</h5>
+                    <p className="mb-0 text-white-50 small">Receive payments, manage balance, and payout earnings.</p>
+                  </div>
+                </div>
+                <div className="d-flex align-items-center gap-3">
+                  <div className="text-end d-none d-sm-block">
+                    <span className="small text-white-50 d-block">Current Balance</span>
+                    <strong className="text-white fs-5">₹{Number(walletBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowWalletHubModal(false)}></button>
+                </div>
               </div>
 
-              {/* Form */}
-              <form onSubmit={handleAddMoneySubmit}>
-                <div className="modal-body px-4 py-4" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                  {/* Amount Input */}
-                  <div className="mb-4">
-                    <label className="form-label small fw-700 text-muted">Enter Amount (₹)</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light fw-bold">₹</span>
-                      <input 
-                        type="number" 
-                        className="form-control rounded-12 p-3 fw-bold" 
-                        style={{ fontSize: '1.25rem' }}
-                        placeholder="e.g. 500" 
-                        value={walletAmount} 
-                        onChange={(e) => setWalletAmount(e.target.value)}
-                        required
-                        min="1"
+              {/* Navigation Tabs */}
+              <div className="bg-light border-bottom px-4 py-2 d-flex gap-2 overflow-x-auto">
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'scanner' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('scanner')}
+                >
+                  <i className="bi bi-qr-code"></i> Show QR / Receive
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'add' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('add')}
+                >
+                  <i className="bi bi-plus-circle"></i> Add Money
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'withdraw' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('withdraw')}
+                >
+                  <i className="bi bi-cash-stack"></i> Withdraw
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'history' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('history')}
+                >
+                  <i className="bi bi-clock-history"></i> History
+                </button>
+              </div>
+
+              <div className="modal-body p-4" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+                
+                {/* 1. SHOW QR / RECEIVE TAB */}
+                {activeWalletTab === 'scanner' && (
+                  <div className="text-center animate-scale-up py-3">
+                    <p className="text-muted small mb-4">
+                      Show this QR code to hiring clients so they can scan and pay your labour fee directly to your wallet.
+                    </p>
+
+                    {/* QR Container */}
+                    <div className="d-inline-block p-4 bg-white rounded-24 border mb-4 shadow-sm" style={{ border: '2px solid #e2e8f0' }}>
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${sessionStorage.getItem('userId') || 'worker-id-demo'}`}
+                        alt="Labour Wallet QR Code"
+                        style={{ width: '200px', height: '200px', display: 'block' }}
                       />
                     </div>
-                  </div>
 
-                  {/* Payment Method Selector */}
-                  <div className="mb-4">
-                    <label className="form-label small fw-700 text-muted d-block mb-2.5">Select Payment Method</label>
-                    <div className="d-flex gap-2">
-                      <button
-                        type="button"
-                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'upi' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
-                        style={{ fontSize: '0.85rem' }}
-                        onClick={() => setWalletMethod('upi')}
-                      >
-                        📱 UPI
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'card' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
-                        style={{ fontSize: '0.85rem' }}
-                        onClick={() => setWalletMethod('card')}
-                      >
-                        💳 Card
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'netbanking' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
-                        style={{ fontSize: '0.85rem' }}
-                        onClick={() => setWalletMethod('netbanking')}
-                      >
-                        🌐 Net Banking
-                      </button>
+                    {/* Worker Quick info */}
+                    <div className="p-3 bg-light rounded-16 border mx-auto" style={{ maxWidth: '320px' }}>
+                      <h6 className="fw-800 mb-1">{profileName}</h6>
+                      <span className="badge bg-primary-subtle text-primary fw-700">{profileOccupation || 'Trade Worker'}</span>
+                      <div className="small text-muted mt-2 font-monospace">
+                        ID: {sessionStorage.getItem('userId') || 'worker-id-demo'}
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  {/* UPI Inputs */}
-                  {walletMethod === 'upi' && (
-                    <div className="mb-3 animate-scale-up">
-                      <label className="form-label small fw-700 text-muted">UPI ID (VPA)</label>
-                      <input 
-                        type="text" 
-                        className="form-control rounded-12" 
-                        placeholder="e.g. 9876543210@paytm" 
-                        value={upiId} 
-                        onChange={(e) => setUpiId(e.target.value)}
-                        required
-                      />
-                      <div className="small text-muted mt-1">A mock notification request will be sent to this UPI app.</div>
+                {/* 2. ADD MONEY TAB */}
+                {activeWalletTab === 'add' && (
+                  <form onSubmit={handleAddMoneySubmit} className="animate-scale-up">
+                    {walletMethod !== 'netbanking' && (
+                      <div className="mb-4">
+                        <label className="form-label small fw-700 text-muted">Enter Deposit Amount (₹)</label>
+                        <div className="input-group">
+                          <span className="input-group-text bg-light fw-bold">₹</span>
+                          <input
+                            type="number"
+                            className="form-control rounded-12 p-3 fw-bold"
+                            style={{ fontSize: '1.25rem' }}
+                            placeholder="e.g. 500"
+                            value={walletAmount}
+                            onChange={(e) => setWalletAmount(e.target.value)}
+                            required
+                            min="1"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mb-4">
+                      <label className="form-label small fw-700 text-muted d-block mb-2.5">Select Payment Method</label>
+                      <div className="d-flex gap-2">
+                        <button
+                          type="button"
+                          className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'upi' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                          style={{ fontSize: '0.85rem' }}
+                          onClick={() => setWalletMethod('upi')}
+                        >
+                          📱 UPI
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'card' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                          style={{ fontSize: '0.85rem' }}
+                          onClick={() => setWalletMethod('card')}
+                        >
+                          💳 Card
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'netbanking' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                          style={{ fontSize: '0.85rem' }}
+                          onClick={() => setWalletMethod('netbanking')}
+                        >
+                          🌐 Net Banking
+                        </button>
+                      </div>
                     </div>
-                  )}
 
-                  {/* Card Inputs */}
-                  {walletMethod === 'card' && (
-                    <div className="animate-scale-up">
-                      <div className="mb-3">
-                        <label className="form-label small fw-700 text-muted">Cardholder Name</label>
-                        <input 
-                          type="text" 
-                          className="form-control rounded-12" 
-                          placeholder="Name on Card" 
-                          value={cardName} 
-                          onChange={(e) => setCardName(e.target.value)}
+                    {walletMethod === 'upi' && (
+                      <div className="mb-4 animate-scale-up">
+                        <label className="form-label small fw-700 text-muted">UPI ID (VPA)</label>
+                        <input
+                          type="text"
+                          className="form-control rounded-12"
+                          placeholder="e.g. 9876543210@paytm"
+                          value={upiId}
+                          onChange={(e) => setUpiId(e.target.value)}
                           required
                         />
                       </div>
-                      <div className="mb-3">
-                        <label className="form-label small fw-700 text-muted">Card Number</label>
-                        <input 
-                          type="text" 
-                          className="form-control rounded-12 font-monospace" 
-                          placeholder="4242 4242 4242 4242" 
-                          value={cardNumber} 
-                          onChange={handleCardNumberChange}
-                          required
-                        />
+                    )}
+
+                    {walletMethod === 'card' && (
+                      <div className="animate-scale-up mb-4">
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Cardholder Name</label>
+                          <input
+                            type="text"
+                            className="form-control rounded-12 text-dark"
+                            placeholder="Name on Card"
+                            value={cardName}
+                            onChange={(e) => setCardName(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Card Number</label>
+                          <input
+                            type="text"
+                            className="form-control rounded-12 font-monospace text-dark"
+                            placeholder="1234 5678 9012 3456" 
+                            value={cardNumber}
+                            onChange={handleCardNumberChange}
+                            required
+                          />
+                        </div>
+                        <div className="row g-3">
+                          <div className="col-6">
+                            <label className="form-label small fw-700 text-muted">Expiry Date</label>
+                            <input
+                              type="text"
+                              className="form-control rounded-12 font-monospace text-center text-dark"
+                              placeholder="MM / YY"
+                              value={cardExpiry}
+                              onChange={handleCardExpiryChange}
+                              required
+                            />
+                          </div>
+                          <div className="col-6">
+                            <label className="form-label small fw-700 text-muted">CVV / CVC</label>
+                            <div className="input-group">
+                              <input
+                                type={showCvc ? "text" : "password"}
+                                className="form-control rounded-start-12 font-monospace text-center text-dark"
+                                placeholder="•••"
+                                value={cardCvc}
+                                onChange={handleCardCvcChange}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength="4"
+                                required
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary rounded-end-12 d-flex align-items-center justify-content-center"
+                                onClick={() => setShowCvc(!showCvc)}
+                                style={{ borderColor: '#dee2e6' }}
+                              >
+                                <i className={`bi ${showCvc ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="row g-3 mb-3">
-                        <div className="col-6">
-                          <label className="form-label small fw-700 text-muted">Expiry Date</label>
+                    )}
+
+                    {walletMethod === 'netbanking' && (
+                      <div className="netbanking-container border p-4 rounded-20 bg-light mb-4 animate-scale-up text-start">
+                        <h5 className="fw-800 text-dark mb-3">Net Banking</h5>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Select Bank</label>
+                          <select 
+                            className="form-select rounded-12 py-2"
+                            value={netBank}
+                            onChange={(e) => setNetBank(e.target.value)}
+                            required
+                          >
+                            <option value="">Choose Your Bank</option>
+                            <option>State Bank of India (SBI)</option>
+                            <option>HDFC Bank</option>
+                            <option>ICICI Bank</option>
+                            <option>Punjab National Bank (PNB)</option>
+                            <option>Axis Bank</option>
+                            <option>Kotak Mahindra Bank</option>
+                          </select>
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Account Holder Name</label>
                           <input 
                             type="text" 
-                            className="form-control rounded-12 font-monospace text-center" 
-                            placeholder="MM / YY" 
-                            value={cardExpiry} 
-                            onChange={handleCardExpiryChange}
-                            required
+                            className="form-control rounded-12" 
+                            placeholder="Enter Name"
+                            value={netBankHolderName}
+                            onChange={(e) => setNetBankHolderName(toTitleCase(e.target.value))}
+                            required 
                           />
                         </div>
-                        <div className="col-6">
-                          <label className="form-label small fw-700 text-muted">CVV / CVC</label>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Customer ID / User ID</label>
                           <input 
-                            type="password" 
-                            className="form-control rounded-12 font-monospace text-center" 
-                            placeholder="•••" 
-                            value={cardCvc} 
-                            onChange={handleCardCvcChange}
-                            required
+                            type="text" 
+                            className="form-control rounded-12" 
+                            placeholder="Enter User ID"
+                            value={netBankCustomerId}
+                            onChange={(e) => setNetBankCustomerId(e.target.value)}
+                            required 
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Amount</label>
+                          <input 
+                            type="number" 
+                            className="form-control rounded-12 py-2 fw-bold" 
+                            placeholder="Enter Amount"
+                            value={walletAmount}
+                            onChange={(e) => setWalletAmount(e.target.value)}
+                            required 
+                            min="1"
                           />
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Net Banking Inputs */}
-                  {walletMethod === 'netbanking' && (
-                    <div className="mb-3 animate-scale-up">
-                      <label className="form-label small fw-700 text-muted">Select Your Bank</label>
-                      <select 
-                        className="form-select rounded-12" 
-                        value={netBank} 
-                        onChange={(e) => setNetBank(e.target.value)}
-                        required
-                      >
-                        <option value="sbi">State Bank of India (SBI)</option>
-                        <option value="hdfc">HDFC Bank</option>
-                        <option value="icici">ICICI Bank</option>
-                        <option value="axis">Axis Bank</option>
-                        <option value="pnb">Punjab National Bank</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
+                    <button
+                      type="submit"
+                      className="btn btn-primary w-100 rounded-12 py-2.5 fw-bold"
+                      style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none' }}
+                      disabled={isAddingMoney}
+                    >
+                      {isAddingMoney ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                          Processing...
+                        </>
+                      ) : (
+                        walletMethod === 'netbanking' ? 'Proceed to Bank' : `Confirm & Add ₹${walletAmount || '0'}`
+                      )}
+                    </button>
+                  </form>
+                )}
 
-                {/* Footer */}
-                <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary flex-fill rounded-12 py-2 fw-bold"
-                    onClick={() => setShowAddWalletModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary flex-fill rounded-12 py-2 fw-bold"
-                    style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none' }}
-                    disabled={isAddingMoney}
-                  >
-                    {isAddingMoney ? (
+                {/* 3. WITHDRAW MONEY TAB */}
+                {activeWalletTab === 'withdraw' && (
+                  <form onSubmit={handleWithdrawSubmit} className="animate-scale-up">
+                    {/* Simulated SMS Notification banner */}
+                    {withdrawOtpNotification && (
+                      <div className="alert alert-warning py-3 px-3 rounded-16 border-warning mb-4 shadow-sm" role="alert" style={{ fontSize: '0.88rem', borderLeft: '5px solid #ffc107' }}>
+                        <div className="fw-800 text-dark mb-1" style={{ fontWeight: 800 }}>
+                          <i className="bi bi-chat-left-dots-fill text-warning me-2"></i>Simulated SMS Banner:
+                        </div>
+                        <div className="font-monospace text-dark bg-white p-2 rounded border mt-2 small" style={{ fontWeight: 600 }}>
+                          {withdrawOtpNotification}
+                        </div>
+                      </div>
+                    )}
+
+                    {!showWithdrawOtp ? (
                       <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        Recharging...
+                        <div className="mb-4">
+                          <label className="form-label small fw-700 text-muted">Enter Withdrawal Amount (₹)</label>
+                          <div className="input-group">
+                            <span className="input-group-text bg-light fw-bold">₹</span>
+                            <input
+                              type="number"
+                              className="form-control rounded-12 p-3 fw-bold"
+                              style={{ fontSize: '1.25rem' }}
+                              placeholder="e.g. 500"
+                              value={withdrawAmount}
+                              onChange={(e) => setWithdrawAmount(e.target.value)}
+                              required
+                              min="1"
+                            />
+                          </div>
+                          <div className="small text-muted mt-1.5 d-flex justify-content-between">
+                            <span>Available Wallet Balance:</span>
+                            <strong className="text-dark">₹{walletBalance.toFixed(2)}</strong>
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <label className="form-label small fw-700 text-muted d-block mb-2.5">Select Payout Option</label>
+                          <div className="d-flex gap-2">
+                            <button
+                              type="button"
+                              className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${withdrawMethod === 'bank' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                              style={{ fontSize: '0.85rem' }}
+                              onClick={() => setWithdrawMethod('bank')}
+                            >
+                              🏦 Bank Account
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${withdrawMethod === 'upi' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                              style={{ fontSize: '0.85rem' }}
+                              onClick={() => setWithdrawMethod('upi')}
+                            >
+                              📱 UPI ID
+                            </button>
+                          </div>
+                        </div>
+
+                        {withdrawMethod === 'upi' && (
+                          <div className="mb-4 animate-scale-up">
+                            <label className="form-label small fw-700 text-muted">UPI ID for Withdrawal</label>
+                            <input
+                              type="text"
+                              className="form-control rounded-12"
+                              placeholder="e.g. name@upi"
+                              value={upiWithdrawId}
+                              onChange={(e) => setUpiWithdrawId(e.target.value)}
+                              required
+                            />
+                          </div>
+                        )}
+
+                        {withdrawMethod === 'bank' && (
+                          <div className="animate-scale-up mb-4">
+                            <div className="mb-3">
+                              <label className="form-label small fw-700 text-muted">Bank Name</label>
+                              <select
+                                className="form-select rounded-12"
+                                value={bankName}
+                                onChange={(e) => setBankName(e.target.value)}
+                                required
+                              >
+                                <option value="SBI">State Bank of India (SBI)</option>
+                                <option value="HDFC">HDFC Bank</option>
+                                <option value="ICICI">ICICI Bank</option>
+                                <option value="AXIS">Axis Bank</option>
+                                <option value="PNB">Punjab National Bank</option>
+                              </select>
+                            </div>
+                            <div className="row g-3">
+                              <div className="col-7">
+                                <label className="form-label small fw-700 text-muted">Account Number</label>
+                                <input
+                                  type="text"
+                                  className="form-control rounded-12 text-dark"
+                                  placeholder="Account Number"
+                                  value={accountNo}
+                                  onChange={(e) => setAccountNo(e.target.value)}
+                                  required
+                                />
+                              </div>
+                              <div className="col-5">
+                                <label className="form-label small fw-700 text-muted">IFSC Code</label>
+                                <input
+                                  type="text"
+                                  className="form-control rounded-12 text-center text-dark"
+                                  placeholder="SBIN0001234"
+                                  value={ifscCode}
+                                  onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                                  required
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="submit"
+                          className="btn btn-primary w-100 rounded-12 py-2.5 fw-bold"
+                          style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}
+                          disabled={isWithdrawing}
+                        >
+                          {isWithdrawing ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                              Sending OTP...
+                            </>
+                          ) : `Confirm Withdrawal of ₹${withdrawAmount || '0'}`}
+                        </button>
                       </>
-                    ) : `Confirm & Add ₹${walletAmount || '0'}`}
-                  </button>
-                </div>
-              </form>
+                    ) : (
+                      <>
+                        <div className="mb-4 text-center animate-scale-up">
+                          <label className="form-label small fw-700 text-muted mb-2">ENTER 4-DIGIT VERIFICATION CODE</label>
+                          <input
+                            type="text"
+                            maxLength="4"
+                            className="form-control text-center font-monospace fw-800 fs-3"
+                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
+                            placeholder="••••"
+                            value={withdrawOtp}
+                            onChange={(e) => setWithdrawOtp(e.target.value.replace(/\D/g, ''))}
+                            required
+                            autoFocus
+                          />
+                        </div>
 
-            </div>
-          </div>
-        </div>
-      )}
+                        <button
+                          type="submit"
+                          className="btn btn-success w-100 rounded-12 py-2.5 fw-bold"
+                          style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}
+                          disabled={isWithdrawing}
+                        >
+                          {isWithdrawing ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                              Verifying & Transferring...
+                            </>
+                          ) : `Verify & Transfer ₹${withdrawAmount}`}
+                        </button>
 
-      {/* ── Show QR Code Modal ── */}
-      {showQrCodeModal && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
-              
-              {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #10b981, #059669)', borderBottom: 'none' }}>
-                <h5 className="modal-title fw-800 m-0"><i className="bi bi-qr-code me-2"></i>My QuickLabour QR Code</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowQrCodeModal(false)}></button>
-              </div>
+                        <div className="text-center mt-3">
+                          <button
+                            type="button"
+                            className="btn btn-link text-decoration-none small fw-700 p-0"
+                            style={{ color: '#0d6efd', fontSize: '0.85rem' }}
+                            onClick={async () => {
+                              try {
+                                const res = await api.requestWithdrawalOtp(Number(withdrawAmount));
+                                setWithdrawOtp('');
+                                setWithdrawOtpNotification(`📱 SMS Received on ${sessionStorage.getItem('userPhone') || 'registered phone number'}: Your new withdrawal verification OTP is: ${res.otp}`);
+                              } catch (err) {
+                                showClassyAlert("Failed to resend OTP: " + err.message, "Resend Error");
+                              }
+                            }}
+                          >
+                            <i className="bi bi-arrow-clockwise me-1"></i> Resend OTP Code
+                          </button>
+                        </div>
 
-              {/* Body */}
-              <div className="modal-body px-4 py-4 text-center">
-                <p className="text-muted small mb-4">
-                  Show this QR code to hiring clients so they can scan and pay your labour fee directly to your wallet.
-                </p>
+                        <div className="text-center mt-2 border-top pt-3">
+                          <span
+                            className="toggle-auth-link small text-muted text-decoration-underline"
+                            style={{ cursor: 'pointer', fontSize: '0.82rem' }}
+                            onClick={() => {
+                              setShowWithdrawOtp(false);
+                              setWithdrawOtp('');
+                              setWithdrawOtpNotification('');
+                            }}
+                          >
+                            ← Change Withdrawal Details
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </form>
+                )}
 
-                {/* QR Container */}
-                <div className="d-inline-block p-4 bg-white rounded-24 border mb-4 shadow-sm" style={{ border: '2px solid #e2e8f0' }}>
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${sessionStorage.getItem('userId') || 'worker-id-demo'}`}
-                    alt="Labour Wallet QR Code"
-                    style={{ width: '200px', height: '200px', display: 'block' }}
-                  />
-                </div>
-
-                {/* Worker Quick info */}
-                <div className="p-3 bg-light rounded-16 border mx-auto" style={{ maxWidth: '300px' }}>
-                  <h6 className="fw-800 mb-1">{profileName}</h6>
-                  <span className="badge bg-primary-subtle text-primary fw-700">{profileOccupation || 'Trade Worker'}</span>
-                  <div className="small text-muted mt-2 font-monospace">
-                    ID: {sessionStorage.getItem('userId') || 'worker-id-demo'}
+                {/* 4. TRANSACTION HISTORY TAB */}
+                {activeWalletTab === 'history' && (
+                  <div className="animate-scale-up">
+                    <h6 className="fw-800 text-muted small text-uppercase mb-3">Transaction & Payout Logs</h6>
+                    <div className="table-responsive rounded-16 border overflow-hidden">
+                      <table className="table table-hover align-middle mb-0" style={{ fontSize: '0.85rem' }}>
+                        <thead className="table-light text-muted fw-bold">
+                          <tr>
+                            <th className="py-2.5 px-3">Type</th>
+                            <th className="py-2.5 px-3">Date & Time</th>
+                            <th className="py-2.5 px-3 text-end">Amount</th>
+                            <th className="py-2.5 px-3 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getTransactions().length === 0 ? (
+                            <tr>
+                              <td colSpan="4" className="text-center py-4 text-muted">
+                                <i className="bi bi-info-circle me-1"></i> No transactions recorded yet.
+                              </td>
+                            </tr>
+                          ) : (
+                            getTransactions().map((tx) => (
+                              <tr key={tx.id}>
+                                <td className="py-3 px-3 fw-bold text-dark">
+                                  {tx.isCredit ? '📥 ' : '📤 '} {tx.type}
+                                </td>
+                                <td className="py-3 px-3 text-muted" style={{ fontSize: '0.8rem' }}>{tx.date}</td>
+                                <td className={`py-3 px-3 text-end fw-black ${tx.isCredit ? 'text-success' : 'text-danger'}`}>
+                                  {tx.isCredit ? '+' : '-'}₹{tx.amount.toFixed(2)}
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-2.5 py-1" style={{ fontSize: '0.7rem' }}>
+                                    {tx.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                )}
+
               </div>
 
               {/* Footer */}
-              <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
+              <div className="modal-footer px-4 py-3 bg-light border-0">
                 <button
                   type="button"
-                  className="btn btn-outline-secondary w-100 rounded-12 py-2 fw-bold"
-                  onClick={() => setShowQrCodeModal(false)}
+                  className="btn btn-secondary rounded-12 px-4 py-2 fw-bold w-100"
+                  onClick={() => setShowWalletHubModal(false)}
                 >
-                  Close QR Code
+                  Close Wallet Hub
                 </button>
               </div>
 
@@ -2636,6 +3208,39 @@ const WorkerDashboard = () => {
                 <button type="button" className="btn btn-outline-secondary flex-fill rounded-12 fw-bold" onClick={() => setShowWorkerDisputeModal(false)}>Cancel</button>
                 <button type="button" className="btn btn-warning flex-fill rounded-12 fw-bold text-white" style={{ background: '#f59e0b', border: 'none' }} onClick={handleSubmitWorkerDispute}>Submit Dispute</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Classy Custom Alert Modal ── */}
+      {classyAlert.show && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '400px' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: '#ffffff' }}>
+              <div className="mb-3">
+                {classyAlert.type === 'danger' || classyAlert.type === 'error' ? (
+                  <div className="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle animate-pulse" style={{ width: '64px', height: '64px' }}>
+                    <i className="bi bi-exclamation-triangle-fill fs-2"></i>
+                  </div>
+                ) : (
+                  <div className="d-inline-flex align-items-center justify-content-center bg-success bg-opacity-10 text-success rounded-circle" style={{ width: '64px', height: '64px' }}>
+                    <i className="bi bi-check-circle-fill fs-2"></i>
+                  </div>
+                )}
+              </div>
+              <h5 className="fw-800 text-dark mb-2" style={{ fontWeight: 800 }}>{classyAlert.title}</h5>
+              <p className="text-muted px-2 mb-4" style={{ fontSize: '0.92rem', lineHeight: '1.5', fontWeight: 500 }}>
+                {classyAlert.message}
+              </p>
+              <button 
+                type="button" 
+                className="btn btn-primary w-100 rounded-12 py-2.5 fw-bold"
+                style={{ background: classyAlert.type === 'danger' || classyAlert.type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}
+                onClick={() => setClassyAlert({ ...classyAlert, show: false })}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

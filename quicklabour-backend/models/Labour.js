@@ -55,6 +55,7 @@ const labourSchema = new mongoose.Schema(
     idFile: {
       type: String,
       default: '',
+      select: false,
     },
     isOnline: {
       type: Boolean,
@@ -74,7 +75,7 @@ const labourSchema = new mongoose.Schema(
     },
     points: {
       type: Number,
-      default: 0,
+      default: 20,
     },
     skills: {
       type: [String],
@@ -83,6 +84,14 @@ const labourSchema = new mongoose.Schema(
     walletBalance: {
       type: Number,
       default: 0,
+    },
+    withdrawalOtp: {
+      type: String,
+      default: null,
+    },
+    withdrawalOtpExpires: {
+      type: Date,
+      default: null,
     },
   },
   {

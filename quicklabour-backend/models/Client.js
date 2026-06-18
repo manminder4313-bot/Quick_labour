@@ -51,6 +51,7 @@ const clientSchema = new mongoose.Schema(
     idFile: {
       type: String,
       default: '',
+      select: false,
     },
     rating: {
       type: Number,
@@ -62,7 +63,15 @@ const clientSchema = new mongoose.Schema(
     },
     walletBalance: {
       type: Number,
-      default: 0,
+      default: 500,
+    },
+    withdrawalOtp: {
+      type: String,
+      default: null,
+    },
+    withdrawalOtpExpires: {
+      type: Date,
+      default: null,
     },
   },
   {

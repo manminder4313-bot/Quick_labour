@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
 
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 const Contact = () => {
   const [formData, setFormData] = useState({
     name: '',
@@ -12,7 +20,11 @@ const Contact = () => {
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    let value = e.target.value;
+    if (e.target.name === 'name' || e.target.name === 'subject') {
+      value = toTitleCase(value);
+    }
+    setFormData({ ...formData, [e.target.name]: value });
   };
 
   const handleSubmit = async (e) => {

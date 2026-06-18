@@ -92,6 +92,52 @@ const seedDatabase = async () => {
       ];
       await Review.insertMany(initialReviews);
     }
+
+    // 3. Migrate any static unsplash avatars to dynamic name-based initials
+    const migrateStaticAvatars = async () => {
+      try {
+        console.log('🔄 Checking for static Unsplash or empty avatars to migrate...');
+        
+        // Find Clients with Unsplash or empty avatar
+        const clientsToMigrate = await Client.find({
+          $or: [
+            { avatar: { $regex: 'images.unsplash.com/photo-1534528741775-53994a69daeb' } },
+            { avatar: '' },
+            { avatar: null }
+          ]
+        });
+        
+        if (clientsToMigrate.length > 0) {
+          console.log(`Updating ${clientsToMigrate.length} clients to dynamic initials avatars...`);
+          for (const c of clientsToMigrate) {
+            c.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(c.fullName)}&background=random&color=fff&size=150`;
+            await c.save();
+          }
+        }
+
+        // Find Labours with Unsplash or empty avatar
+        const laboursToMigrate = await Labour.find({
+          $or: [
+            { avatar: { $regex: 'images.unsplash.com/photo-1506794778202-cad84cf45f1d' } },
+            { avatar: '' },
+            { avatar: null }
+          ]
+        });
+        
+        if (laboursToMigrate.length > 0) {
+          console.log(`Updating ${laboursToMigrate.length} workers/labours to dynamic initials avatars...`);
+          for (const l of laboursToMigrate) {
+            l.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(l.fullName)}&background=random&color=fff&size=150`;
+            await l.save();
+          }
+        }
+        console.log('✅ Avatar migration check finished!');
+      } catch (err) {
+        console.error(`🌱 Avatar migration error: ${err.message}`);
+      }
+    };
+    await migrateStaticAvatars();
+
     console.log('✅ Database checked and seeded successfully!');
   } catch (error) {
     console.error(`🌱 Seeding error: ${error.message}`);

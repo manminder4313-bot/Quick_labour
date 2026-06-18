@@ -36,6 +36,18 @@ const adminSchema = new mongoose.Schema(
       type: [String],
       default: ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts'],
     },
+    walletBalance: {
+      type: Number,
+      default: 0,
+    },
+    withdrawalOtp: {
+      type: String,
+      default: null,
+    },
+    withdrawalOtpExpires: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

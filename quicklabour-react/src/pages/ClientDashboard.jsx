@@ -1,6 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../utils/api';
+
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
 import ChatWidget from '../components/ChatWidget';
 
 const ClientDashboard = () => {
@@ -12,6 +20,10 @@ const ClientDashboard = () => {
   const [showAddWalletModal, setShowAddWalletModal] = useState(false);
   const [showScanQrModal, setShowScanQrModal] = useState(false);
 
+  // Unified Wallet Hub Modal States
+  const [showWalletHubModal, setShowWalletHubModal] = useState(false);
+  const [activeWalletTab, setActiveWalletTab] = useState('scanner'); // 'scanner', 'add', 'withdraw', 'history'
+
   // Add Wallet Form States
   const [walletAmount, setWalletAmount] = useState('');
   const [walletMethod, setWalletMethod] = useState('upi'); // 'upi', 'card', 'netbanking'
@@ -19,15 +31,40 @@ const ClientDashboard = () => {
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvc, setCardCvc] = useState('');
+  const [showCvc, setShowCvc] = useState(false);
   const [cardName, setCardName] = useState('');
-  const [netBank, setNetBank] = useState('sbi');
+  const [netBank, setNetBank] = useState('');
+  const [netBankHolderName, setNetBankHolderName] = useState('');
+  const [netBankCustomerId, setNetBankCustomerId] = useState('');
   const [isAddingMoney, setIsAddingMoney] = useState(false);
+
+  // Withdraw Form States
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [bankName, setBankName] = useState('SBI');
+  const [accountNo, setAccountNo] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
+  const [upiWithdrawId, setUpiWithdrawId] = useState('');
+  const [withdrawMethod, setWithdrawMethod] = useState('bank'); // 'bank', 'upi'
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [showWithdrawOtp, setShowWithdrawOtp] = useState(false);
+  const [withdrawOtp, setWithdrawOtp] = useState('');
+  const [withdrawOtpNotification, setWithdrawOtpNotification] = useState('');
+  const [classyAlert, setClassyAlert] = useState({ show: false, title: '', message: '', type: 'error' });
+  const showClassyAlert = (message, title = 'Alert', type = 'danger') => {
+    setClassyAlert({ show: true, title, message, type });
+  };
 
   // Scan QR / Pay Labor Form States
   const [workersList, setWorkersList] = useState([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [isPayingLabour, setIsPayingLabour] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [scannedWorker, setScannedWorker] = useState(null);
+  const [paymentNote, setPaymentNote] = useState('');
+  const [scanState, setScanState] = useState('idle'); // 'idle', 'scanning', 'success'
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   const [walletSuccessMsg, setWalletSuccessMsg] = useState('');
 
@@ -123,10 +160,17 @@ const ClientDashboard = () => {
   };
 
   // Profile reactive states
-  const [profileName, setProfileName] = useState(sessionStorage.getItem('userName') || 'Raj Malhotra');
+  const initialName = sessionStorage.getItem('userName') || 'Raj Malhotra';
+  const [profileName, setProfileName] = useState(initialName);
   const [profilePhone, setProfilePhone] = useState(sessionStorage.getItem('userPhone') || '+91 98765 43210');
   const [profileAddress, setProfileAddress] = useState(sessionStorage.getItem('userAddress') || 'Mumbai, Maharashtra');
-  const [profileAvatar, setProfileAvatar] = useState(sessionStorage.getItem('userAvatar') || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80');
+  const [profileAvatar, setProfileAvatar] = useState(() => {
+    const stored = sessionStorage.getItem('userAvatar');
+    if (!stored || stored.includes('images.unsplash.com/photo-1534528741775-53994a69daeb') || stored.includes('images.unsplash.com/photo-1540569014015-19a7be504e3a')) {
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(initialName)}&background=random&color=fff&size=150`;
+    }
+    return stored;
+  });
 
   // Edit Profile Form States
   const [showEditModal, setShowEditModal] = useState(false);
@@ -215,6 +259,13 @@ const ClientDashboard = () => {
       setProfilePhone(res.phone);
       setProfileAddress(res.address);
       setProfileAvatar(res.avatar);
+      
+      // Sync with sessionStorage so header updates in real-time
+      sessionStorage.setItem('userName', res.fullName);
+      sessionStorage.setItem('userPhone', res.phone);
+      sessionStorage.setItem('userAddress', res.address);
+      sessionStorage.setItem('userAvatar', res.avatar);
+      
       setShowEditModal(false);
     } catch (error) {
       alert('❌ Error updating profile: ' + error.message);
@@ -253,7 +304,7 @@ const ClientDashboard = () => {
 
   const fetchProfile = async () => {
     try {
-      const data = await api.getProfile();
+      const data = await api.getProfileLite();
       if (data.walletBalance !== undefined) {
         setWalletBalance(data.walletBalance);
       }
@@ -265,14 +316,6 @@ const ClientDashboard = () => {
   useEffect(() => {
     fetchJobs();
     fetchProfile();
-
-    // Auto-refresh client dashboard every 5 seconds for real-time updates and notification sounds
-    const interval = setInterval(() => {
-      fetchJobs();
-      fetchProfile();
-    }, 5000);
-
-    return () => clearInterval(interval);
   }, []);
 
   // Map backend jobs into dashboard format
@@ -391,6 +434,63 @@ const ClientDashboard = () => {
     }
   };
 
+  const handleDeleteJob = async (jobId) => {
+    if (window.confirm("⚠️ Are you sure you want to delete this job request? If a worker was hired, their points will be refunded.")) {
+      try {
+        await api.deleteJob(jobId);
+        fetchJobs(); // Refresh jobs list
+        fetchProfile(); // Refresh profile
+      } catch (error) {
+        alert("❌ Failed to delete job request: " + error.message);
+      }
+    }
+  };
+
+  const getTransactions = () => {
+    const userId = sessionStorage.getItem('userId') || 'demo';
+    const key = `quicklabour_transactions_${userId}`;
+    let txs = localStorage.getItem(key);
+    if (!txs) {
+      const initialTxs = [
+        {
+          id: 'tx_001',
+          date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toLocaleString('en-IN'),
+          type: 'Sign-up Bonus',
+          amount: 20,
+          isCredit: true,
+          status: 'Completed'
+        },
+        {
+          id: 'tx_002',
+          date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toLocaleString('en-IN'),
+          type: 'Initial Deposit',
+          amount: 1000,
+          isCredit: true,
+          status: 'Completed'
+        }
+      ];
+      localStorage.setItem(key, JSON.stringify(initialTxs));
+      return initialTxs;
+    }
+    return JSON.parse(txs);
+  };
+
+  const addTransaction = (type, amount, isCredit) => {
+    const userId = sessionStorage.getItem('userId') || 'demo';
+    const key = `quicklabour_transactions_${userId}`;
+    const txs = getTransactions();
+    const newTx = {
+      id: `tx_${Math.random().toString(36).substr(2, 9)}`,
+      date: new Date().toLocaleString('en-IN'),
+      type,
+      amount,
+      isCredit,
+      status: 'Completed'
+    };
+    txs.unshift(newTx);
+    localStorage.setItem(key, JSON.stringify(txs));
+  };
+
   const handleOpenScanModal = async () => {
     try {
       const data = await api.getWorkers();
@@ -398,7 +498,8 @@ const ClientDashboard = () => {
       if (data && data.length > 0) {
         setSelectedWorkerId(data[0]._id);
       }
-      setShowScanQrModal(true);
+      setActiveWalletTab('scanner');
+      setShowWalletHubModal(true);
     } catch (err) {
       alert("Error fetching workers: " + err.message);
     }
@@ -407,50 +508,206 @@ const ClientDashboard = () => {
   const handleAddMoneySubmit = async (e) => {
     e.preventDefault();
     if (!walletAmount || isNaN(walletAmount) || Number(walletAmount) <= 0) {
-      alert("Please enter a valid amount.");
+      showClassyAlert("Please enter a valid amount.", "Invalid Input");
       return;
     }
     setIsAddingMoney(true);
     try {
       const res = await api.addWalletMoney(Number(walletAmount), walletMethod);
       setWalletBalance(res.walletBalance);
+      addTransaction('Wallet Deposit', Number(walletAmount), true);
       setWalletSuccessMsg(`🎉 Successfully recharged ₹${walletAmount} to your wallet!`);
-      setShowAddWalletModal(false);
       setWalletAmount('');
+      setActiveWalletTab('history');
       setTimeout(() => setWalletSuccessMsg(''), 6000);
     } catch (err) {
-      alert("Failed to add money: " + err.message);
+      showClassyAlert("Failed to add money: " + err.message, "Deposit Failed");
     } finally {
       setIsAddingMoney(false);
+    }
+  };
+
+  const handleWithdrawSubmit = async (e) => {
+    e.preventDefault();
+    if (!withdrawAmount || isNaN(withdrawAmount) || Number(withdrawAmount) <= 0) {
+      showClassyAlert("Please enter a valid withdrawal amount.", "Invalid Input");
+      return;
+    }
+    const amt = Number(withdrawAmount);
+    if (amt > walletBalance) {
+      showClassyAlert("Insufficient wallet balance for withdrawal.", "Insufficient Balance");
+      return;
+    }
+
+    if (!showWithdrawOtp) {
+      setIsWithdrawing(true);
+      try {
+        const res = await api.requestWithdrawalOtp(amt);
+        setShowWithdrawOtp(true);
+        setWithdrawOtp('');
+        setWithdrawOtpNotification(`📱 SMS Received on ${sessionStorage.getItem('userPhone') || 'registered phone number'}: Your withdrawal verification OTP is: ${res.otp}`);
+        setWalletSuccessMsg(`📱 A 4-digit verification code has been sent to your phone number.`);
+        setTimeout(() => setWalletSuccessMsg(''), 5000);
+      } catch (err) {
+        showClassyAlert("Failed to send verification OTP: " + err.message, "OTP Error");
+      } finally {
+        setIsWithdrawing(false);
+      }
+      return;
+    }
+
+    if (!withdrawOtp || withdrawOtp.length < 4) {
+      showClassyAlert("Please enter the 4-digit verification OTP.", "Verification Required");
+      return;
+    }
+
+    setIsWithdrawing(true);
+    try {
+      const res = await api.withdrawWalletMoney(amt, withdrawOtp);
+      setWalletBalance(res.walletBalance);
+      sessionStorage.setItem('userWalletBalance', res.walletBalance);
+
+      addTransaction('Withdrawal', amt, false);
+      setWalletSuccessMsg(`💸 Withdrawal of ₹${amt} processed and transferred successfully!`);
+      setWithdrawAmount('');
+      setWithdrawOtp('');
+      setShowWithdrawOtp(false);
+      setWithdrawOtpNotification('');
+      setAccountNo('');
+      setIfscCode('');
+      setUpiWithdrawId('');
+      setActiveWalletTab('history');
+      setTimeout(() => setWalletSuccessMsg(''), 6000);
+    } catch (err) {
+      showClassyAlert("Withdrawal verification failed: " + err.message, "Verification Failed");
+    } finally {
+      setIsWithdrawing(false);
     }
   };
 
   const handlePayLabourSubmit = async (e) => {
     e.preventDefault();
     if (!selectedWorkerId) {
-      alert("Please select a worker to pay.");
+      showClassyAlert("Please select a worker to pay.", "Selection Required");
       return;
     }
     if (!paymentAmount || isNaN(paymentAmount) || Number(paymentAmount) <= 0) {
-      alert("Please enter a valid payment amount.");
+      showClassyAlert("Please enter a valid payment amount.", "Invalid Input");
       return;
     }
     if (Number(paymentAmount) > walletBalance) {
-      alert("Insufficient wallet balance. Please add money first.");
+      showClassyAlert("Insufficient wallet balance. Please add money first.", "Insufficient Balance");
       return;
     }
     setIsPayingLabour(true);
     try {
       const res = await api.transferWalletMoney(selectedWorkerId, Number(paymentAmount));
       setWalletBalance(res.walletBalance);
+      addTransaction(`Paid Worker (${workersList.find(w => w._id === selectedWorkerId)?.fullName || 'Labour'})`, Number(paymentAmount), false);
       setWalletSuccessMsg(`💸 ${res.message}`);
-      setShowScanQrModal(false);
       setPaymentAmount('');
+      setActiveWalletTab('history');
       setTimeout(() => setWalletSuccessMsg(''), 6000);
     } catch (err) {
-      alert("Payment failed: " + err.message);
+      showClassyAlert("Payment failed: " + err.message, "Payment Failed");
     } finally {
       setIsPayingLabour(false);
+    }
+  };
+  // ── Camera and QR Code Scanner helpers ──
+  const playPaytmBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
+      gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      oscillator.start();
+      setTimeout(() => {
+        oscillator.stop();
+        audioCtx.close();
+      }, 150);
+    } catch (e) {
+      console.warn('Audio beep failed:', e);
+    }
+  };
+
+  const playSuccessChime = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const playTone = (freq, startTime, duration) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.1, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      };
+      playTone(523.25, audioCtx.currentTime, 0.25); // C5
+      playTone(659.25, audioCtx.currentTime + 0.15, 0.4); // E5
+    } catch (e) {
+      console.warn('Success chime failed:', e);
+    }
+  };
+
+  const startCamera = async () => {
+    setIsCameraActive(true);
+    setScanState('scanning');
+    setScannedWorker(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err) {
+      console.warn('Camera access failed, falling back to gorgeous simulation mode:', err);
+    }
+
+    // Auto-simulate scanning complete after 2.5 seconds to ensure awesome UX even without camera feed
+    setTimeout(() => {
+      setScanState(prev => {
+        if (prev === 'scanning') {
+          // Select the worker currently picked in the dropdown, or fallback to first worker in list
+          const targetId = selectedWorkerId || (workersList[0] && workersList[0]._id);
+          if (targetId) {
+            handleSimulatedScanSuccess(targetId);
+          }
+        }
+        return prev;
+      });
+    }, 2800);
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+    setScanState('idle');
+  };
+
+  const handleSimulatedScanSuccess = (workerId) => {
+    const worker = workersList.find(w => w._id === workerId);
+    if (worker) {
+      playPaytmBeep();
+      setScannedWorker(worker);
+      setSelectedWorkerId(workerId);
+      setScanState('success');
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      setIsCameraActive(false);
     }
   };
 
@@ -563,7 +820,7 @@ const ClientDashboard = () => {
               </div>
             </div>
             <div className="col-md-3">
-              <div className="dashboard-stat-card cursor-pointer" onClick={() => setShowAddWalletModal(true)} style={{ cursor: 'pointer' }}>
+              <div className="dashboard-stat-card cursor-pointer" onClick={() => { setActiveWalletTab('scanner'); setShowWalletHubModal(true); }} style={{ cursor: 'pointer' }}>
                 <div className="stat-icon-wrapper purple">
                   <i className="bi bi-wallet-fill"></i>
                 </div>
@@ -602,8 +859,8 @@ const ClientDashboard = () => {
                           localStorage.setItem('quicklabour_client_penalties', JSON.stringify(clientPenalties));
                           alert(`✅ Penalty of ₹${pendingPenalty} successfully paid from your wallet!`);
                         } else {
-                          alert("Insufficient wallet balance. Please add money to your wallet to clear this penalty.");
-                          setShowAddWalletModal(true);
+                           setActiveWalletTab('add');
+                           setShowWalletHubModal(true);
                         }
                       }}
                       className="btn btn-danger btn-sm rounded-12 fw-bold px-3 py-2 flex-shrink-0"
@@ -700,9 +957,20 @@ const ClientDashboard = () => {
                                 )}
                               </div>
                             </div>
-                            <span className={`badge-status ${job.rawStatus === 'Accepted' ? 'success' : 'info'}`}>
-                              {job.status}
-                            </span>
+                            <div className="d-flex align-items-center gap-2">
+                              <span className={`badge-status ${job.rawStatus === 'Accepted' ? 'success' : 'info'}`}>
+                                {job.status}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger rounded-circle p-0 d-flex align-items-center justify-content-center"
+                                style={{ width: '28px', height: '28px', border: 'none', background: 'rgba(220, 53, 69, 0.08)', cursor: 'pointer' }}
+                                onClick={() => handleDeleteJob(job.id)}
+                                title="Delete Job Posting"
+                              >
+                                <i className="bi bi-trash-fill" style={{ fontSize: '0.9rem', color: '#dc3545' }}></i>
+                              </button>
+                            </div>
                           </div>
 
                           {/* Matched Hired Worker Information */}
@@ -1272,7 +1540,7 @@ const ClientDashboard = () => {
                       className="form-control rounded-12"
                       placeholder="Enter full name"
                       value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
+                      onChange={(e) => setEditName(toTitleCase(e.target.value))}
                       required
                     />
                   </div>
@@ -1285,7 +1553,7 @@ const ClientDashboard = () => {
                       className="form-control rounded-12"
                       placeholder="Enter phone number"
                       value={editPhone}
-                      onChange={(e) => setEditPhone(e.target.value)}
+                      onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, ''))}
                       required
                     />
                   </div>
@@ -1299,7 +1567,7 @@ const ClientDashboard = () => {
                         className="form-control rounded-12"
                         placeholder="Enter address"
                         value={editAddress}
-                        onChange={(e) => setEditAddress(e.target.value)}
+                        onChange={(e) => setEditAddress(toTitleCase(e.target.value))}
                         required
                         style={{ flex: 1 }}
                       />
@@ -1355,321 +1623,770 @@ const ClientDashboard = () => {
         </div>
       )}
 
-      {/* ── Add Money to Wallet Modal ── */}
-      {showAddWalletModal && (
+      {/* ── Unified Wallet Hub Modal ── */}
+      {showWalletHubModal && (
         <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-dialog modal-dialog-centered modal-lg">
             <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
-
+              
               {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', borderBottom: 'none' }}>
-                <h5 className="modal-title fw-800 m-0"><i className="bi bi-wallet-fill me-2"></i>Add Money to Wallet</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowAddWalletModal(false)}></button>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)', borderBottom: 'none' }}>
+                <div className="d-flex align-items-center gap-3">
+                  <div className="rounded-3 p-2 bg-white bg-opacity-20 d-flex align-items-center justify-content-center" style={{ width: '45px', height: '45px' }}>
+                    <i className="bi bi-wallet2 fs-4"></i>
+                  </div>
+                  <div>
+                    <h5 className="modal-title fw-800 m-0 text-white">Wallet Hub</h5>
+                    <p className="mb-0 text-white-50 small">Manage your funds, pay workers, and track transactions.</p>
+                  </div>
+                </div>
+                <div className="d-flex align-items-center gap-3">
+                  <div className="text-end d-none d-sm-block">
+                    <span className="small text-white-50 d-block">Current Balance</span>
+                    <strong className="text-white fs-5">₹{Number(walletBalance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setShowWalletHubModal(false)}></button>
+                </div>
               </div>
 
-              {/* Form */}
-              <form onSubmit={handleAddMoneySubmit}>
-                <div className="modal-body px-4 py-4" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                  {/* Amount Input */}
-                  <div className="mb-4">
-                    <label className="form-label small fw-700 text-muted">Enter Amount (₹)</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light fw-bold">₹</span>
-                      <input
-                        type="number"
-                        className="form-control rounded-12 p-3 fw-bold"
-                        style={{ fontSize: '1.25rem' }}
-                        placeholder="e.g. 500"
-                        value={walletAmount}
-                        onChange={(e) => setWalletAmount(e.target.value)}
-                        required
-                        min="1"
-                      />
-                    </div>
-                  </div>
+              {/* Navigation Tabs */}
+              <div className="bg-light border-bottom px-4 py-2 d-flex gap-2 overflow-x-auto">
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'scanner' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('scanner')}
+                >
+                  <i className="bi bi-qr-code-scan"></i> Scanner / Pay
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'add' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('add')}
+                >
+                  <i className="bi bi-plus-circle"></i> Add Money
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'withdraw' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('withdraw')}
+                >
+                  <i className="bi bi-cash-stack"></i> Withdraw
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn rounded-pill px-3 py-1.5 fw-bold d-flex align-items-center gap-1.5 border-0 ${activeWalletTab === 'history' ? 'btn-primary text-white' : 'btn-light text-secondary'}`}
+                  style={{ fontSize: '0.85rem' }}
+                  onClick={() => setActiveWalletTab('history')}
+                >
+                  <i className="bi bi-clock-history"></i> History
+                </button>
+              </div>
 
-                  {/* Payment Method Selector */}
-                  <div className="mb-4">
-                    <label className="form-label small fw-700 text-muted d-block mb-2.5">Select Payment Method</label>
-                    <div className="d-flex gap-2">
-                      <button
-                        type="button"
-                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'upi' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
-                        style={{ fontSize: '0.85rem' }}
-                        onClick={() => setWalletMethod('upi')}
-                      >
-                        📱 UPI
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'card' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
-                        style={{ fontSize: '0.85rem' }}
-                        onClick={() => setWalletMethod('card')}
-                      >
-                        💳 Card
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'netbanking' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
-                        style={{ fontSize: '0.85rem' }}
-                        onClick={() => setWalletMethod('netbanking')}
-                      >
-                        🌐 Net Banking
-                      </button>
-                    </div>
-                  </div>
+              <div className="modal-body p-4" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+                
+                {/* 1. SCANNER / PAY TAB */}
+                {activeWalletTab === 'scanner' && (
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!selectedWorkerId) {
+                      showClassyAlert("Please select a worker to pay.", "Selection Required");
+                      return;
+                    }
+                    if (!paymentAmount || isNaN(paymentAmount) || Number(paymentAmount) <= 0) {
+                      showClassyAlert("Please enter a valid payment amount.", "Invalid Input");
+                      return;
+                    }
+                    if (Number(paymentAmount) > walletBalance) {
+                      showClassyAlert("Insufficient wallet balance. Please add money first.", "Insufficient Balance");
+                      return;
+                    }
+                    setIsPayingLabour(true);
+                    try {
+                      const res = await api.transferWalletMoney(selectedWorkerId, Number(paymentAmount));
+                      setWalletBalance(res.walletBalance);
+                      
+                      // Play Paytm-style success tone!
+                      playSuccessChime();
 
-                  {/* UPI Inputs */}
-                  {walletMethod === 'upi' && (
-                    <div className="mb-3 animate-scale-up">
-                      <label className="form-label small fw-700 text-muted">UPI ID (VPA)</label>
-                      <input
-                        type="text"
-                        className="form-control rounded-12"
-                        placeholder="e.g. 9876543210@paytm"
-                        value={upiId}
-                        onChange={(e) => setUpiId(e.target.value)}
-                        required
-                      />
-                      <div className="small text-muted mt-1">A mock notification request will be sent to this UPI app.</div>
-                    </div>
-                  )}
+                      addTransaction(`Paid Worker (${workersList.find(w => w._id === selectedWorkerId)?.fullName || 'Labour'})`, Number(paymentAmount), false);
+                      
+                      // Format Paytm success message
+                      setWalletSuccessMsg(`💸 Sent ₹${paymentAmount} to ${workersList.find(w => w._id === selectedWorkerId)?.fullName || 'Worker'} successfully!`);
+                      
+                      setPaymentAmount('');
+                      setPaymentNote('');
+                      setScanState('idle');
+                      setScannedWorker(null);
+                      setActiveWalletTab('history');
+                      setTimeout(() => setWalletSuccessMsg(''), 7000);
+                    } catch (err) {
+                      showClassyAlert("Payment failed: " + err.message, "Payment Failed");
+                    } finally {
+                      setIsPayingLabour(false);
+                    }
+                  }} className="animate-scale-up">
+                    
+                    {scanState !== 'success' ? (
+                      <>
+                        {/* ── Viewport Container ── */}
+                        <div className="position-relative d-flex flex-column justify-content-center align-items-center bg-dark rounded-24 overflow-hidden mb-4 shadow" style={{ height: '200px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                          {scanState === 'scanning' ? (
+                            <>
+                              <video 
+                                ref={videoRef} 
+                                className="position-absolute w-100 h-100" 
+                                style={{ objectFit: 'cover', zIndex: 1 }} 
+                                playsInline 
+                                muted 
+                              />
+                              {/* Overlay Scan Viewfinder */}
+                              <div className="position-absolute d-flex justify-content-center align-items-center w-100 h-100" style={{ zIndex: 2, background: 'rgba(0,0,0,0.35)' }}>
+                                <div className="position-relative border border-success border-3 rounded" style={{ width: '120px', height: '120px', boxShadow: '0 0 0 2000px rgba(0, 0, 0, 0.45)' }}>
+                                  {/* Laser Beam */}
+                                  <div className="position-absolute bg-success w-100" style={{
+                                    height: '2.5px',
+                                    left: 0,
+                                    top: 0,
+                                    animation: 'scanLine 2s infinite ease-in-out',
+                                    boxShadow: '0 0 8px #198754'
+                                  }}></div>
+                                </div>
+                              </div>
+                              <button 
+                                type="button" 
+                                className="btn btn-danger btn-sm position-absolute rounded-pill px-3 py-1.5 fw-bold" 
+                                style={{ bottom: '15px', zIndex: 3, fontSize: '0.75rem' }}
+                                onClick={stopCamera}
+                              >
+                                <i className="bi bi-x-circle me-1"></i> Stop Scanner
+                              </button>
+                            </>
+                          ) : (
+                            // IDLE STATE
+                            <div className="text-center p-4 d-flex flex-column align-items-center justify-content-center w-100 h-100" style={{ zIndex: 2 }}>
+                              <div className="bg-primary bg-opacity-10 text-primary rounded-circle mb-3 d-flex align-items-center justify-content-center animate-pulse" style={{ width: '56px', height: '56px' }}>
+                                <i className="bi bi-qr-code-scan fs-3"></i>
+                              </div>
+                              <button 
+                                type="button" 
+                                className="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm"
+                                onClick={startCamera}
+                              >
+                                <i className="bi bi-camera-fill me-2"></i> Start Camera Scanner
+                              </button>
+                              <div className="text-white-50 small mt-2 fw-semibold" style={{ fontSize: '0.75rem' }}>
+                                Scan worker's QR to make payment instantly
+                              </div>
+                            </div>
+                          )}
+                        </div>
 
-                  {/* Card Inputs */}
-                  {walletMethod === 'card' && (
-                    <div className="animate-scale-up">
-                      <div className="mb-3">
-                        <label className="form-label small fw-700 text-muted">Cardholder Name</label>
+                        {/* Select dropdown helper */}
+                        <div className="mb-3 text-start">
+                          <label className="form-label small fw-700 text-muted">Select Labour Profile (QR Link)</label>
+                          <div className="d-flex gap-2">
+                            <select
+                              className="form-select rounded-12 p-2.5 text-dark"
+                              value={selectedWorkerId}
+                              onChange={(e) => {
+                                setSelectedWorkerId(e.target.value);
+                                if (e.target.value) {
+                                  handleSimulatedScanSuccess(e.target.value);
+                                }
+                              }}
+                              required
+                            >
+                              <option value="">Choose Worker QR...</option>
+                              {workersList.map((worker) => (
+                                <option key={worker._id} value={worker._id}>
+                                  {worker.fullName} ({worker.occupation || 'Labour'})
+                                </option>
+                              ))}
+                            </select>
+                            {selectedWorkerId && scanState === 'scanning' && (
+                              <button 
+                                type="button" 
+                                className="btn btn-success rounded-12 px-3 fw-bold"
+                                onClick={() => handleSimulatedScanSuccess(selectedWorkerId)}
+                              >
+                                Scan
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <style>{`
+                          @keyframes scanLine {
+                            0%, 100% { top: 0%; }
+                            50% { top: 100%; }
+                          }
+                        `}</style>
+                      </>
+                    ) : (
+                      /* ── Paytm Style Payment Confirmation Screen ── */
+                      <div className="paytm-style-pay-screen text-center animate-scale-up p-2">
+                        <div className="d-inline-flex position-relative mb-3 bg-white rounded-circle p-1 shadow-sm">
+                          <img
+                            src={scannedWorker.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&q=80'}
+                            alt={scannedWorker.fullName}
+                            className="rounded-circle border border-2 border-success p-0.5"
+                            style={{ width: '72px', height: '72px', objectFit: 'cover' }}
+                          />
+                          <span className="position-absolute bg-success text-white rounded-circle d-flex align-items-center justify-content-center border border-white" style={{ bottom: '4px', right: '4px', width: '22px', height: '22px', fontSize: '0.65rem' }}>
+                            <i className="bi bi-check-lg"></i>
+                          </span>
+                        </div>
+
+                        <div className="mb-4">
+                          <div className="d-flex align-items-center justify-content-center gap-1.5 mb-1">
+                            <h5 className="fw-800 text-dark mb-0" style={{ fontSize: '1.25rem', fontWeight: 800 }}>{scannedWorker.fullName}</h5>
+                            <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-2 py-0.5 small fw-bold" style={{ fontSize: '0.62rem' }}>
+                              Verified Payee
+                            </span>
+                          </div>
+                          <p className="text-muted small mb-0 font-monospace">UPI: {scannedWorker.phone || '9999911111'}@quicklabour</p>
+                          <p className="text-muted small mb-0">{scannedWorker.occupation || 'Trade Worker'} · ID: ...{scannedWorker._id.substring(scannedWorker._id.length - 8)}</p>
+                        </div>
+
+                        {/* Paytm Numeric Amount Box */}
+                        <div className="py-4 border-top border-bottom mb-4 bg-light rounded-20 px-3 text-center">
+                          <label className="form-label small fw-bold text-muted d-block mb-1">Amount to Transfer</label>
+                          <div className="d-flex align-items-center justify-content-center gap-1">
+                            <span className="fw-800 text-dark" style={{ fontSize: '2rem', fontWeight: 800 }}>₹</span>
+                            <input
+                              type="number"
+                              className="border-0 bg-transparent text-center fw-800 text-dark p-0 focus-none"
+                              style={{ fontSize: '2.5rem', width: '180px', outline: 'none', fontWeight: 800 }}
+                              placeholder="0"
+                              value={paymentAmount}
+                              onChange={(e) => setPaymentAmount(e.target.value)}
+                              required
+                              min="1"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="small text-muted mt-2">
+                            Wallet Balance: <strong className="text-dark">₹{walletBalance.toFixed(2)}</strong>
+                          </div>
+                        </div>
+
+                        {/* Optional payment note */}
+                        <div className="mb-4 text-start">
+                          <label className="form-label small fw-700 text-muted">Add Message / Remarks (Optional)</label>
+                          <input 
+                            type="text" 
+                            className="form-control rounded-12 py-2" 
+                            placeholder="e.g. Payment for painting task" 
+                            value={paymentNote}
+                            onChange={(e) => setPaymentNote(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="d-flex flex-column gap-2">
+                          <button
+                            type="submit"
+                            className="btn btn-primary w-100 rounded-16 py-3 fw-bold d-flex align-items-center justify-content-center gap-2 shadow-sm"
+                            style={{ background: 'linear-gradient(135deg, #0d6efd, #0b5ed7)', border: 'none', fontSize: '1.05rem' }}
+                            disabled={isPayingLabour || !paymentAmount}
+                          >
+                            {isPayingLabour ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Sending Securely...
+                              </>
+                            ) : (
+                              <>
+                                <i className="bi bi-shield-fill-check"></i> Pay Securely ₹{paymentAmount || '0'}
+                              </>
+                            )}
+                          </button>
+                          
+                          <button
+                            type="button"
+                            className="btn btn-link text-decoration-none small text-secondary fw-700 mt-1"
+                            onClick={() => {
+                              setScanState('idle');
+                              setScannedWorker(null);
+                              setPaymentAmount('');
+                              setPaymentNote('');
+                            }}
+                          >
+                            <i className="bi bi-arrow-left me-1"></i> Scan Another QR Code
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </form>
+                )}
+
+                {/* 2. ADD MONEY TAB */}
+                {activeWalletTab === 'add' && (
+                  <form onSubmit={handleAddMoneySubmit} className="animate-scale-up">
+                    {walletMethod !== 'netbanking' && (
+                      <div className="mb-4">
+                        <label className="form-label small fw-700 text-muted">Enter Deposit Amount (₹)</label>
+                        <div className="input-group">
+                          <span className="input-group-text bg-light fw-bold">₹</span>
+                          <input
+                            type="number"
+                            className="form-control rounded-12 p-3 fw-bold"
+                            style={{ fontSize: '1.25rem' }}
+                            placeholder="e.g. 500"
+                            value={walletAmount}
+                            onChange={(e) => setWalletAmount(e.target.value)}
+                            required
+                            min="1"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mb-4">
+                      <label className="form-label small fw-700 text-muted d-block mb-2.5">Select Payment Method</label>
+                      <div className="d-flex gap-2">
+                        <button
+                          type="button"
+                          className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'upi' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                          style={{ fontSize: '0.85rem' }}
+                          onClick={() => setWalletMethod('upi')}
+                        >
+                          📱 UPI
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'card' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                          style={{ fontSize: '0.85rem' }}
+                          onClick={() => setWalletMethod('card')}
+                        >
+                          💳 Card
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${walletMethod === 'netbanking' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                          style={{ fontSize: '0.85rem' }}
+                          onClick={() => setWalletMethod('netbanking')}
+                        >
+                          🌐 Net Banking
+                        </button>
+                      </div>
+                    </div>
+
+                    {walletMethod === 'upi' && (
+                      <div className="mb-4 animate-scale-up">
+                        <label className="form-label small fw-700 text-muted">UPI ID (VPA)</label>
                         <input
                           type="text"
-                          className="form-control rounded-12 text-dark"
-                          style={{ color: '#000000' }}
-                          placeholder="Name on Card"
-                          value={cardName}
-                          onChange={(e) => setCardName(e.target.value)}
+                          className="form-control rounded-12"
+                          placeholder="e.g. 9876543210@paytm"
+                          value={upiId}
+                          onChange={(e) => setUpiId(e.target.value)}
                           required
                         />
                       </div>
-                      <div className="mb-3">
-                        <label className="form-label small fw-700 text-muted">Card Number</label>
-                        <input
-                          type="text"
-                          className="form-control rounded-12 font-monospace text-dark"
-                          style={{ color: '#000000' }}
-                          placeholder="4242 4242 4242 4242"
-                          value={cardNumber}
-                          onChange={handleCardNumberChange}
-                          required
-                        />
-                      </div>
-                      <div className="row g-3 mb-3">
-                        <div className="col-6">
-                          <label className="form-label small fw-700 text-muted">Expiry Date</label>
+                    )}
+
+                    {walletMethod === 'card' && (
+                      <div className="animate-scale-up mb-4">
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Cardholder Name</label>
                           <input
                             type="text"
-                            className="form-control rounded-12 font-monospace text-center text-dark"
-                            style={{ color: '#000000' }}
-                            placeholder="MM / YY"
-                            value={cardExpiry}
-                            onChange={handleCardExpiryChange}
+                            className="form-control rounded-12 text-dark"
+                            placeholder="Name on Card"
+                            value={cardName}
+                            onChange={(e) => setCardName(toTitleCase(e.target.value))}
                             required
                           />
                         </div>
-                        <div className="col-6">
-                          <label className="form-label small fw-700 text-muted">CVV / CVC</label>
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Card Number</label>
                           <input
-                            type="password"
-                            className="form-control rounded-12 font-monospace text-center text-dark"
-                            style={{ color: '#000000' }}
-                            placeholder="•••"
-                            value={cardCvc}
-                            onChange={handleCardCvcChange}
+                            type="text"
+                            className="form-control rounded-12 font-monospace text-dark"
+                            placeholder="1234 5678 9012 3456"
+                            value={cardNumber}
+                            onChange={handleCardNumberChange}
                             required
+                          />
+                        </div>
+                        <div className="row g-3">
+                          <div className="col-6">
+                            <label className="form-label small fw-700 text-muted">Expiry Date</label>
+                            <input
+                              type="text"
+                              className="form-control rounded-12 font-monospace text-center text-dark"
+                              placeholder="MM / YY"
+                              value={cardExpiry}
+                              onChange={handleCardExpiryChange}
+                              required
+                            />
+                          </div>
+                          <div className="col-6">
+                            <label className="form-label small fw-700 text-muted">CVV / CVC</label>
+                            <div className="input-group">
+                              <input
+                                type={showCvc ? "text" : "password"}
+                                className="form-control rounded-start-12 font-monospace text-center text-dark"
+                                placeholder="•••"
+                                value={cardCvc}
+                                onChange={handleCardCvcChange}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength="4"
+                                required
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary rounded-end-12 d-flex align-items-center justify-content-center"
+                                onClick={() => setShowCvc(!showCvc)}
+                                style={{ borderColor: '#dee2e6' }}
+                              >
+                                <i className={`bi ${showCvc ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {walletMethod === 'netbanking' && (
+                      <div className="netbanking-container border p-4 rounded-20 bg-light mb-4 animate-scale-up text-start">
+                        <h5 className="fw-800 text-dark mb-3">Net Banking</h5>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Select Bank</label>
+                          <select 
+                            className="form-select rounded-12 py-2"
+                            value={netBank}
+                            onChange={(e) => setNetBank(e.target.value)}
+                            required
+                          >
+                            <option value="">Choose Your Bank</option>
+                            <option>State Bank of India (SBI)</option>
+                            <option>HDFC Bank</option>
+                            <option>ICICI Bank</option>
+                            <option>Punjab National Bank (PNB)</option>
+                            <option>Axis Bank</option>
+                            <option>Kotak Mahindra Bank</option>
+                          </select>
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Account Holder Name</label>
+                          <input 
+                            type="text" 
+                            className="form-control rounded-12" 
+                            placeholder="Enter Name"
+                            value={netBankHolderName}
+                            onChange={(e) => setNetBankHolderName(toTitleCase(e.target.value))}
+                            required 
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Customer ID / User ID</label>
+                          <input 
+                            type="text" 
+                            className="form-control rounded-12" 
+                            placeholder="Enter User ID"
+                            value={netBankCustomerId}
+                            onChange={(e) => setNetBankCustomerId(e.target.value)}
+                            required 
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="form-label small fw-700 text-muted">Amount</label>
+                          <input 
+                            type="number" 
+                            className="form-control rounded-12 py-2 fw-bold" 
+                            placeholder="Enter Amount"
+                            value={walletAmount}
+                            onChange={(e) => setWalletAmount(e.target.value)}
+                            required 
+                            min="1"
                           />
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Net Banking Inputs */}
-                  {walletMethod === 'netbanking' && (
-                    <div className="mb-3 animate-scale-up">
-                      <label className="form-label small fw-700 text-muted">Select Your Bank</label>
-                      <select
-                        className="form-select rounded-12"
-                        value={netBank}
-                        onChange={(e) => setNetBank(e.target.value)}
-                        required
-                      >
-                        <option value="sbi">State Bank of India (SBI)</option>
-                        <option value="hdfc">HDFC Bank</option>
-                        <option value="icici">ICICI Bank</option>
-                        <option value="axis">Axis Bank</option>
-                        <option value="pnb">Punjab National Bank</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
+                    <button
+                      type="submit"
+                      className="btn btn-primary w-100 rounded-12 py-2.5 fw-bold"
+                      style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none' }}
+                      disabled={isAddingMoney}
+                    >
+                      {isAddingMoney ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                          Processing...
+                        </>
+                      ) : (
+                        walletMethod === 'netbanking' ? 'Proceed to Bank' : `Confirm & Add ₹${walletAmount || '0'}`
+                      )}
+                    </button>
+                  </form>
+                )}
 
-                {/* Footer */}
-                <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary flex-fill rounded-12 py-2 fw-bold"
-                    onClick={() => setShowAddWalletModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary flex-fill rounded-12 py-2 fw-bold"
-                    style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none' }}
-                    disabled={isAddingMoney}
-                  >
-                    {isAddingMoney ? (
+                {/* 3. WITHDRAW MONEY TAB */}
+                {activeWalletTab === 'withdraw' && (
+                  <form onSubmit={handleWithdrawSubmit} className="animate-scale-up">
+                    {/* Simulated SMS Notification banner */}
+                    {withdrawOtpNotification && (
+                      <div className="alert alert-warning py-3 px-3 rounded-16 border-warning mb-4 shadow-sm" role="alert" style={{ fontSize: '0.88rem', borderLeft: '5px solid #ffc107' }}>
+                        <div className="fw-800 text-dark mb-1" style={{ fontWeight: 800 }}>
+                          <i className="bi bi-chat-left-dots-fill text-warning me-2"></i>Simulated SMS Banner:
+                        </div>
+                        <div className="font-monospace text-dark bg-white p-2 rounded border mt-2 small" style={{ fontWeight: 600 }}>
+                          {withdrawOtpNotification}
+                        </div>
+                      </div>
+                    )}
+
+                    {!showWithdrawOtp ? (
                       <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        Recharging...
+                        <div className="mb-4">
+                          <label className="form-label small fw-700 text-muted">Enter Withdrawal Amount (₹)</label>
+                          <div className="input-group">
+                            <span className="input-group-text bg-light fw-bold">₹</span>
+                            <input
+                              type="number"
+                              className="form-control rounded-12 p-3 fw-bold"
+                              style={{ fontSize: '1.25rem' }}
+                              placeholder="e.g. 500"
+                              value={withdrawAmount}
+                              onChange={(e) => setWithdrawAmount(e.target.value)}
+                              required
+                              min="1"
+                            />
+                          </div>
+                          <div className="small text-muted mt-1.5 d-flex justify-content-between">
+                            <span>Available Wallet Balance:</span>
+                            <strong className="text-dark">₹{walletBalance.toFixed(2)}</strong>
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <label className="form-label small fw-700 text-muted d-block mb-2.5">Select Payout Option</label>
+                          <div className="d-flex gap-2">
+                            <button
+                              type="button"
+                              className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${withdrawMethod === 'bank' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                              style={{ fontSize: '0.85rem' }}
+                              onClick={() => setWithdrawMethod('bank')}
+                            >
+                              🏦 Bank Account
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn flex-fill py-2.5 fw-bold rounded-12 border ${withdrawMethod === 'upi' ? 'bg-primary text-white border-primary' : 'bg-white text-dark'}`}
+                              style={{ fontSize: '0.85rem' }}
+                              onClick={() => setWithdrawMethod('upi')}
+                            >
+                              📱 UPI ID
+                            </button>
+                          </div>
+                        </div>
+
+                        {withdrawMethod === 'upi' && (
+                          <div className="mb-4 animate-scale-up">
+                            <label className="form-label small fw-700 text-muted">UPI ID for Withdrawal</label>
+                            <input
+                              type="text"
+                              className="form-control rounded-12"
+                              placeholder="e.g. name@upi"
+                              value={upiWithdrawId}
+                              onChange={(e) => setUpiWithdrawId(e.target.value)}
+                              required
+                            />
+                          </div>
+                        )}
+
+                        {withdrawMethod === 'bank' && (
+                          <div className="animate-scale-up mb-4">
+                            <div className="mb-3">
+                              <label className="form-label small fw-700 text-muted">Bank Name</label>
+                              <select
+                                className="form-select rounded-12"
+                                value={bankName}
+                                onChange={(e) => setBankName(e.target.value)}
+                                required
+                              >
+                                <option value="SBI">State Bank of India (SBI)</option>
+                                <option value="HDFC">HDFC Bank</option>
+                                <option value="ICICI">ICICI Bank</option>
+                                <option value="AXIS">Axis Bank</option>
+                                <option value="PNB">Punjab National Bank</option>
+                              </select>
+                            </div>
+                            <div className="row g-3">
+                              <div className="col-7">
+                                <label className="form-label small fw-700 text-muted">Account Number</label>
+                                <input
+                                  type="text"
+                                  className="form-control rounded-12 text-dark"
+                                  placeholder="Account Number"
+                                  value={accountNo}
+                                  onChange={(e) => setAccountNo(e.target.value)}
+                                  required
+                                />
+                              </div>
+                              <div className="col-5">
+                                <label className="form-label small fw-700 text-muted">IFSC Code</label>
+                                <input
+                                  type="text"
+                                  className="form-control rounded-12 text-center text-dark"
+                                  placeholder="SBIN0001234"
+                                  value={ifscCode}
+                                  onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                                  required
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="submit"
+                          className="btn btn-primary w-100 rounded-12 py-2.5 fw-bold"
+                          style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}
+                          disabled={isWithdrawing}
+                        >
+                          {isWithdrawing ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                              Sending OTP...
+                            </>
+                          ) : `Confirm Withdrawal of ₹${withdrawAmount || '0'}`}
+                        </button>
                       </>
-                    ) : `Confirm & Add ₹${walletAmount || '0'}`}
-                  </button>
-                </div>
-              </form>
+                    ) : (
+                      <>
+                        <div className="mb-4 text-center animate-scale-up">
+                          <label className="form-label small fw-700 text-muted mb-2">ENTER 4-DIGIT VERIFICATION CODE</label>
+                          <input
+                            type="text"
+                            maxLength="4"
+                            className="form-control text-center font-monospace fw-800 fs-3"
+                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
+                            placeholder="••••"
+                            value={withdrawOtp}
+                            onChange={(e) => setWithdrawOtp(e.target.value.replace(/\D/g, ''))}
+                            required
+                            autoFocus
+                          />
+                        </div>
 
-            </div>
-          </div>
-        </div>
-      )}
+                        <button
+                          type="submit"
+                          className="btn btn-success w-100 rounded-12 py-2.5 fw-bold"
+                          style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}
+                          disabled={isWithdrawing}
+                        >
+                          {isWithdrawing ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                              Verifying & Transferring...
+                            </>
+                          ) : `Verify & Transfer ₹${withdrawAmount}`}
+                        </button>
 
-      {/* ── Scan QR Code / Pay Labour Fee Modal ── */}
-      {showScanQrModal && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+                        <div className="text-center mt-3">
+                          <button
+                            type="button"
+                            className="btn btn-link text-decoration-none small fw-700 p-0"
+                            style={{ color: '#0d6efd', fontSize: '0.85rem' }}
+                            onClick={async () => {
+                              try {
+                                const res = await api.requestWithdrawalOtp(Number(withdrawAmount));
+                                setWithdrawOtp('');
+                                setWithdrawOtpNotification(`📱 SMS Received on ${sessionStorage.getItem('userPhone') || 'registered phone number'}: Your new withdrawal verification OTP is: ${res.otp}`);
+                              } catch (err) {
+                                showClassyAlert("Failed to resend OTP: " + err.message, "Resend Error");
+                              }
+                            }}
+                          >
+                            <i className="bi bi-arrow-clockwise me-1"></i> Resend OTP Code
+                          </button>
+                        </div>
 
-              {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', borderBottom: 'none' }}>
-                <h5 className="modal-title fw-800 m-0" style={{ color: '#0a2540' }}><i className="bi bi-qr-code-scan me-2"></i>Scan Labour QR Code</h5>
-                <button type="button" className="btn-close" onClick={() => setShowScanQrModal(false)}></button>
+                        <div className="text-center mt-2 border-top pt-3">
+                          <span
+                            className="toggle-auth-link small text-muted text-decoration-underline"
+                            style={{ cursor: 'pointer', fontSize: '0.82rem' }}
+                            onClick={() => {
+                              setShowWithdrawOtp(false);
+                              setWithdrawOtp('');
+                              setWithdrawOtpNotification('');
+                            }}
+                          >
+                            ← Change Withdrawal Details
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </form>
+                )}
+
+                {/* 4. TRANSACTION HISTORY TAB */}
+                {activeWalletTab === 'history' && (
+                  <div className="animate-scale-up">
+                    <h6 className="fw-800 text-muted small text-uppercase mb-3">Transaction & Payout Logs</h6>
+                    <div className="table-responsive rounded-16 border overflow-hidden">
+                      <table className="table table-hover align-middle mb-0" style={{ fontSize: '0.85rem' }}>
+                        <thead className="table-light text-muted fw-bold">
+                          <tr>
+                            <th className="py-2.5 px-3">Type</th>
+                            <th className="py-2.5 px-3">Date & Time</th>
+                            <th className="py-2.5 px-3 text-end">Amount</th>
+                            <th className="py-2.5 px-3 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getTransactions().length === 0 ? (
+                            <tr>
+                              <td colSpan="4" className="text-center py-4 text-muted">
+                                <i className="bi bi-info-circle me-1"></i> No transactions recorded yet.
+                              </td>
+                            </tr>
+                          ) : (
+                            getTransactions().map((tx) => (
+                              <tr key={tx.id}>
+                                <td className="py-3 px-3 fw-bold text-dark">
+                                  {tx.isCredit ? '📥 ' : '📤 '} {tx.type}
+                                </td>
+                                <td className="py-3 px-3 text-muted" style={{ fontSize: '0.8rem' }}>{tx.date}</td>
+                                <td className={`py-3 px-3 text-end fw-black ${tx.isCredit ? 'text-success' : 'text-danger'}`}>
+                                  {tx.isCredit ? '+' : '-'}₹{tx.amount.toFixed(2)}
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-2.5 py-1" style={{ fontSize: '0.7rem' }}>
+                                    {tx.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
               </div>
 
-              {/* Form */}
-              <form onSubmit={handlePayLabourSubmit}>
-                <div className="modal-body px-4 py-4" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
-
-                  {/* Scanner Visual box */}
-                  <div className="position-relative d-flex justify-content-center align-items-center bg-dark rounded-24 overflow-hidden mb-4 shadow" style={{ height: '220px' }}>
-                    {/* Viewfinder box */}
-                    <div className="position-relative border border-success border-3 rounded" style={{ width: '150px', height: '150px' }}>
-                      {/* Laser scanning line */}
-                      <div className="position-absolute bg-success w-100" style={{
-                        height: '2.5px',
-                        left: 0,
-                        top: 0,
-                        animation: 'scanLine 2s infinite ease-in-out',
-                        boxShadow: '0 0 8px #198754'
-                      }}></div>
-                    </div>
-                    {/* Small overlay instruction */}
-                    <div className="position-absolute bottom-0 pb-2.5 text-center text-white-50 small fw-bold" style={{ fontSize: '0.75rem' }}>
-                      Position Worker's QR Code inside the scanner box
-                    </div>
-
-                    <style>{`
-                      @keyframes scanLine {
-                        0%, 100% { top: 0%; }
-                        50% { top: 100%; }
-                      }
-                    `}</style>
-                  </div>
-
-                  {/* Worker ID / Scanner Select Option */}
-                  <div className="mb-3">
-                    <label className="form-label small fw-700 text-muted">Select Labour Profile (QR Link)</label>
-                    <select
-                      className="form-select rounded-12 p-2.5"
-                      value={selectedWorkerId}
-                      onChange={(e) => setSelectedWorkerId(e.target.value)}
-                      required
-                    >
-                      {workersList.length === 0 ? (
-                        <option value="">No Active Labour Profiles Found</option>
-                      ) : (
-                        workersList.map((worker) => (
-                          <option key={worker._id} value={worker._id}>
-                            {worker.fullName} ({worker.occupation || 'Labour'}) - ID: ...{worker._id.substring(worker._id.length - 6)}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Selected Worker Mini-Profile */}
-                  {selectedWorkerId && workersList.find(w => w._id === selectedWorkerId) && (() => {
-                    const selectedWorker = workersList.find(w => w._id === selectedWorkerId);
-                    return (
-                      <div className="p-3 bg-light rounded-16 border mb-4 d-flex align-items-center gap-3 animate-scale-up">
-                        <img
-                          src={selectedWorker.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&q=80'}
-                          alt={selectedWorker.fullName}
-                          className="rounded-circle"
-                          style={{ width: '45px', height: '45px', objectFit: 'cover' }}
-                        />
-                        <div>
-                          <h6 className="fw-800 mb-0.5">{selectedWorker.fullName}</h6>
-                          <p className="text-muted small mb-0">{selectedWorker.occupation || 'Labourer'} · {selectedWorker.phone || 'N/A'}</p>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Amount Input */}
-                  <div className="mb-3">
-                    <label className="form-label small fw-700 text-muted">Enter Amount (₹)</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light fw-bold">₹</span>
-                      <input
-                        type="number"
-                        className="form-control rounded-12 p-3 fw-bold"
-                        style={{ fontSize: '1.25rem' }}
-                        placeholder="Fee amount, e.g. 800"
-                        value={paymentAmount}
-                        onChange={(e) => setPaymentAmount(e.target.value)}
-                        required
-                        min="1"
-                      />
-                    </div>
-                    <div className="small text-muted mt-1.5 d-flex justify-content-between">
-                      <span>Available Wallet Balance:</span>
-                      <strong className="text-dark">₹{walletBalance.toFixed(2)}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary flex-fill rounded-12 py-2 fw-bold"
-                    onClick={() => setShowScanQrModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-warning flex-fill rounded-12 py-2 fw-bold"
-                    style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', border: 'none', color: '#0a2540' }}
-                    disabled={isPayingLabour || !selectedWorkerId}
-                  >
-                    {isPayingLabour ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        Paying Worker...
-                      </>
-                    ) : `Transfer ₹${paymentAmount || '0'}`}
-                  </button>
-                </div>
-              </form>
+              {/* Footer */}
+              <div className="modal-footer px-4 py-3 bg-light border-0">
+                <button
+                  type="button"
+                  className="btn btn-secondary rounded-12 px-4 py-2 fw-bold w-100"
+                  onClick={() => setShowWalletHubModal(false)}
+                >
+                  Close Wallet Hub
+                </button>
+              </div>
 
             </div>
           </div>
@@ -1732,6 +2449,39 @@ const ClientDashboard = () => {
                 <button type="button" className="btn btn-outline-secondary flex-fill rounded-12 fw-bold" onClick={() => setShowClientDisputeModal(false)}>Cancel</button>
                 <button type="button" className="btn btn-warning flex-fill rounded-12 fw-bold text-white" style={{ background: '#f59e0b', border: 'none' }} onClick={handleSubmitClientDispute}>Submit Dispute</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Classy Custom Alert Modal ── */}
+      {classyAlert.show && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '400px' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: '#ffffff' }}>
+              <div className="mb-3">
+                {classyAlert.type === 'danger' || classyAlert.type === 'error' ? (
+                  <div className="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle animate-pulse" style={{ width: '64px', height: '64px' }}>
+                    <i className="bi bi-exclamation-triangle-fill fs-2"></i>
+                  </div>
+                ) : (
+                  <div className="d-inline-flex align-items-center justify-content-center bg-success bg-opacity-10 text-success rounded-circle" style={{ width: '64px', height: '64px' }}>
+                    <i className="bi bi-check-circle-fill fs-2"></i>
+                  </div>
+                )}
+              </div>
+              <h5 className="fw-800 text-dark mb-2" style={{ fontWeight: 800 }}>{classyAlert.title}</h5>
+              <p className="text-muted px-2 mb-4" style={{ fontSize: '0.92rem', lineHeight: '1.5', fontWeight: 500 }}>
+                {classyAlert.message}
+              </p>
+              <button 
+                type="button" 
+                className="btn btn-primary w-100 rounded-12 py-2.5 fw-bold"
+                style={{ background: classyAlert.type === 'danger' || classyAlert.type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #10b981, #059669)', border: 'none' }}
+                onClick={() => setClassyAlert({ ...classyAlert, show: false })}
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

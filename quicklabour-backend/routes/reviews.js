@@ -10,7 +10,15 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const reviews = await Review.find().sort({ createdAt: -1 });
-    res.json(reviews);
+    const optimizedReviews = reviews.map(r => {
+      if (r.avatar && r.avatar.startsWith('data:image')) {
+        const doc = r.toObject();
+        doc.avatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
+        return doc;
+      }
+      return r;
+    });
+    res.json(optimizedReviews);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

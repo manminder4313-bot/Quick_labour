@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api, LABOUR_INDUSTRIES } from '../utils/api';
+import Tesseract from 'tesseract.js';
+
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
 
 
 const Login = () => {
@@ -45,6 +54,8 @@ const Login = () => {
   // Notification States
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [idFileError, setIdFileError] = useState('');
+  const [isScanningID, setIsScanningID] = useState(false);
   
   // Geolocation and Live Location states
   const [latitude, setLatitude] = useState(null);
@@ -62,12 +73,126 @@ const Login = () => {
     }
   };
 
+  const validateIdFile = (type, fileName) => {
+    if (!type || !fileName) return true;
+    const nameLower = fileName.toLowerCase();
+    if (type === 'Aadhaar') {
+      return nameLower.includes('aadhaar') || nameLower.includes('adhar') || nameLower.includes('ahdaar') || nameLower.includes('uidai') || nameLower.includes('aadhar');
+    }
+    if (type === 'PAN') {
+      return nameLower.includes('pan') || nameLower.includes('pen') || nameLower.includes('income') || nameLower.includes('permanent');
+    }
+    return true;
+  };
+
+  const validateIdContent = (type, text, fileName) => {
+    // 1. First check if the filename contains the correct keywords (very fast fallback)
+    if (validateIdFile(type, fileName)) {
+      return true;
+    }
+    
+    // 2. Perform text check from OCR
+    const textLower = text.toLowerCase();
+    if (type === 'Aadhaar') {
+      return (
+        textLower.includes('government') ||
+        textLower.includes('india') ||
+        textLower.includes('unique') ||
+        textLower.includes('identification') ||
+        textLower.includes('aadhaar') ||
+        textLower.includes('aadhar') ||
+        textLower.includes('yob') ||
+        textLower.includes('dob') ||
+        textLower.includes('male') ||
+        textLower.includes('female')
+      );
+    }
+    if (type === 'PAN') {
+      return (
+        textLower.includes('income') ||
+        textLower.includes('tax') ||
+        textLower.includes('permanent') ||
+        textLower.includes('account') ||
+        textLower.includes('number') ||
+        textLower.includes('card') ||
+        textLower.includes('govt') ||
+        textLower.includes('dept')
+      );
+    }
+    return true;
+  };
+
+  const handleIdTypeChange = (newType) => {
+    setIdType(newType);
+    if (!newType) {
+      setIdFileError('');
+      setIdFile(null);
+      setIdFileName('');
+      return;
+    }
+    if (idFile && !validateIdFile(newType, idFile.name)) {
+      setIdFileError(`❌ The uploaded file does not appear to be a valid ${newType === 'Aadhaar' ? 'Aadhaar Card' : 'PAN Card'}. Please ensure you upload a clear photo of your ${newType === 'Aadhaar' ? 'Aadhaar' : 'PAN'} card.`);
+      setIdFile(null);
+      setIdFileName('');
+    } else {
+      setIdFileError('');
+    }
+  };
+
   // Handle ID Proof Upload
-  const handleIdFileChange = (e) => {
+  const handleIdFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      setIdFile(file);
-      setIdFileName(file.name);
+      if (!idType) {
+        setIdFileError(`❌ Please select the ID Proof Document type first!`);
+        e.target.value = null; // Reset file input
+        setIdFile(null);
+        setIdFileName('');
+        return;
+      }
+
+      setIsScanningID(true);
+      setIdFileError('');
+      
+      try {
+        // Run OCR on the image
+        const result = await Tesseract.recognize(
+          file,
+          'eng'
+        );
+        const text = result.data.text || '';
+        const nameLower = file.name.toLowerCase();
+        
+        // Check if OCR text OR filename validates the ID
+        const isValid = validateIdContent(idType, text, nameLower);
+        
+        if (!isValid) {
+          setIdFileError(`❌ The uploaded file does not appear to be a valid ${idType === 'Aadhaar' ? 'Aadhaar Card' : 'PAN Card'}. Please ensure you upload a clear photo of your ${idType === 'Aadhaar' ? 'Aadhaar' : 'PAN'} card.`);
+          e.target.value = null; // Reset file input
+          setIdFile(null);
+          setIdFileName('');
+        } else {
+          setIdFileError('');
+          setIdFile(file);
+          setIdFileName(file.name);
+        }
+      } catch (err) {
+        console.error("OCR validation error, falling back to filename check", err);
+        // Fallback: If OCR fails or is not an image (e.g. PDF), check filename
+        const nameLower = file.name.toLowerCase();
+        if (!validateIdFile(idType, nameLower)) {
+          setIdFileError(`❌ The uploaded file does not appear to be a valid ${idType === 'Aadhaar' ? 'Aadhaar Card' : 'PAN Card'}. Please ensure the filename contains "${idType === 'Aadhaar' ? 'aadhaar' : 'pan'}".`);
+          e.target.value = null; // Reset file input
+          setIdFile(null);
+          setIdFileName('');
+        } else {
+          setIdFileError('');
+          setIdFile(file);
+          setIdFileName(file.name);
+        }
+      } finally {
+        setIsScanningID(false);
+      }
     }
   };
 
@@ -403,6 +528,9 @@ const Login = () => {
               {isSignUp ? (
                 /* ──────────────── REGISTRATION FORM ──────────────── */
                 <form onSubmit={handleSignUp}>
+                  {/* Dummy inputs to absorb browser autofill */}
+                  <input type="text" name="prevent_autofill_email" style={{ display: 'none' }} autoComplete="new-password" />
+                  <input type="password" name="prevent_autofill_password" style={{ display: 'none' }} autoComplete="new-password" />
                   <div className="row g-3">
 
                     {/* Industry — Coming Soon Panel */}
@@ -478,8 +606,9 @@ const Login = () => {
                           type="text"
                           placeholder="e.g. Priya Sharma"
                           value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
+                          onChange={(e) => setFullName(toTitleCase(e.target.value))}
                           required={activeTab !== 'industry'}
+                          autoComplete="new-password"
                         />
                       </div>
                     </div>
@@ -491,10 +620,11 @@ const Login = () => {
                         <label>Contact Number</label>
                         <input
                           type="tel"
-                          placeholder="e.g. +91 98765 43210"
+                          placeholder="e.g. 9876543210"
                           value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
+                          onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                           required
+                          autoComplete="new-password"
                         />
                       </div>
                     </div>
@@ -530,8 +660,9 @@ const Login = () => {
                           type="text"
                           placeholder="e.g. Flat 302, Sea Breeze, Bandra West, Mumbai"
                           value={address}
-                          onChange={(e) => setAddress(e.target.value)}
+                          onChange={(e) => setAddress(toTitleCase(e.target.value))}
                           required
+                          autoComplete="new-password"
                         />
                       </div>
                     </div>
@@ -586,7 +717,7 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0">
                         <label>Select ID Proof Document</label>
-                        <select className="form-select border-1.5 p-2 rounded-12 text-muted" style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }} value={idType} onChange={(e) => setIdType(e.target.value)} required>
+                        <select className="form-select border-1.5 p-2 rounded-12 text-muted" style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }} value={idType} onChange={(e) => handleIdTypeChange(e.target.value)} required>
                           <option value="">-- Choose ID Document --</option>
                           <option value="Aadhaar">Aadhaar Card (UIDAI)</option>
                           <option value="PAN">PAN Card (Income Tax)</option>
@@ -598,12 +729,24 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0">
                         <label>Upload ID Card Proof</label>
-                        <div className="file-upload-wrapper" style={{ height: '50px', padding: '10px 15px' }}>
-                          <span className="small text-muted text-truncate d-block fw-700">
-                            {idFileName ? `✔️ ${idFileName.substring(0, 18)}...` : '📎 Upload ID PDF/Image'}
-                          </span>
-                          <input type="file" accept="image/*,application/pdf" className="file-upload-input" onChange={handleIdFileChange} required />
+                        <div className="file-upload-wrapper" style={{ height: '50px', padding: '10px 15px', position: 'relative' }}>
+                          {isScanningID ? (
+                            <span className="small text-primary text-truncate d-flex align-items-center gap-2 fw-700">
+                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: '14px', height: '14px' }}></span>
+                              🔍 Scanning ID Card...
+                            </span>
+                          ) : (
+                            <span className="small text-muted text-truncate d-block fw-700">
+                              {idFileName ? `✔️ ${idFileName.substring(0, 18)}...` : '📎 Upload ID PDF/Image'}
+                            </span>
+                          )}
+                          <input type="file" accept="image/*,application/pdf" className="file-upload-input" onChange={handleIdFileChange} required disabled={isScanningID} />
                         </div>
+                        {idFileError && (
+                          <div className="text-danger small mt-1" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
+                            {idFileError}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -611,7 +754,7 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0 position-relative">
                         <label>Password</label>
-                        <input type={showSignUpPassword ? "text" : "password"} placeholder="At least 8 chars with uppercase, lowercase, number & symbol..." value={signUpPassword} onChange={(e) => setSignUpPassword(e.target.value)} required style={{ paddingRight: '45px' }} />
+                        <input type={showSignUpPassword ? "text" : "password"} placeholder="At least 8 chars with uppercase, lowercase, number & symbol..." value={signUpPassword} onChange={(e) => setSignUpPassword(e.target.value)} required style={{ paddingRight: '45px' }} autoComplete="new-password" />
                         <button type="button" className="btn position-absolute border-0 bg-transparent" style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }} onClick={() => setShowSignUpPassword(!showSignUpPassword)}>
                           <i className={`bi ${showSignUpPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
                         </button>
@@ -623,10 +766,15 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0 position-relative">
                         <label>Confirm Password</label>
-                        <input type={showConfirmPassword ? "text" : "password"} placeholder="Repeat password..." value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required style={{ paddingRight: '45px' }} />
+                        <input type={showConfirmPassword ? "text" : "password"} placeholder="Repeat password..." value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required style={{ paddingRight: '45px' }} autoComplete="new-password" />
                         <button type="button" className="btn position-absolute border-0 bg-transparent" style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
                           <i className={`bi ${showConfirmPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
                         </button>
+                        {confirmPassword && signUpPassword !== confirmPassword && (
+                          <div className="text-danger small mt-1" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
+                            ❌ Passwords do not match!
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -667,6 +815,7 @@ const Login = () => {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
+                      autoComplete="new-password"
                     />
                   </div>
 
@@ -679,6 +828,7 @@ const Login = () => {
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       style={{ paddingRight: '45px' }}
+                      autoComplete="new-password"
                     />
                     <button
                       type="button"

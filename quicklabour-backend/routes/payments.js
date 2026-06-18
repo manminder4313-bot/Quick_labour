@@ -87,10 +87,19 @@ router.post('/verify-and-credit', protect, async (req, res) => {
       return res.status(404).json({ message: 'Worker profile not found.' });
     }
 
+    const cost = PLAN_PRICES[planType] / 100;
+
     if (isSimulated) {
       // Process secure mock validation in developer sandboxes
       worker.points = (worker.points || 0) + pointsToAdd;
       await worker.save();
+
+      // Automatically add subscription money to Admin wallet
+      const admin = await User.findOne({ role: 'admin' });
+      if (admin) {
+        admin.walletBalance = (admin.walletBalance || 0) + cost;
+        await admin.save();
+      }
 
       return res.json({
         success: true,
@@ -115,6 +124,13 @@ router.post('/verify-and-credit', protect, async (req, res) => {
 
     worker.points = (worker.points || 0) + pointsToAdd;
     await worker.save();
+
+    // Automatically add subscription money to Admin wallet
+    const admin = await User.findOne({ role: 'admin' });
+    if (admin) {
+      admin.walletBalance = (admin.walletBalance || 0) + cost;
+      await admin.save();
+    }
 
     // Mark Stripe Intent as processed in metadata
     await stripe.paymentIntents.update(intentId, {

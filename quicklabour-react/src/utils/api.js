@@ -150,6 +150,26 @@ export const api = {
     return data;
   },
 
+  getProfileLite: async () => {
+    const data = await request('/auth/profile?lite=true');
+    if (data.walletBalance !== undefined) {
+      sessionStorage.setItem('userWalletBalance', data.walletBalance);
+    }
+    if (data.points !== undefined) {
+      sessionStorage.setItem('userPoints', data.points);
+    }
+    if (data.acceptedJobsCount !== undefined) {
+      sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount);
+    }
+    if (data.jobsCompleted !== undefined) {
+      sessionStorage.setItem('userJobsCompleted', data.jobsCompleted);
+    }
+    if (data.rating !== undefined) {
+      sessionStorage.setItem('userRating', data.rating);
+    }
+    return data;
+  },
+
   updateProfile: async (profileData) => {
     const data = await request('/auth/profile', {
       method: 'PUT',
@@ -214,6 +234,22 @@ export const api = {
     return data;
   },
 
+  requestWithdrawalOtp: async (amount) => {
+    return request('/auth/wallet/withdraw-otp', {
+      method: 'POST',
+      body: JSON.stringify({ amount }),
+    });
+  },
+
+  withdrawWalletMoney: async (amount, otp) => {
+    const data = await request('/auth/wallet/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ amount, otp }),
+    });
+    sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
+    return data;
+  },
+
   rechargePointsWallet: async (planType) => {
     const data = await request('/auth/recharge-points-wallet', {
       method: 'POST',
@@ -233,6 +269,12 @@ export const api = {
     return request('/jobs', {
       method: 'POST',
       body: JSON.stringify(jobData),
+    });
+  },
+
+  deleteJob: async (jobId) => {
+    return request(`/jobs/${jobId}`, {
+      method: 'DELETE',
     });
   },
 

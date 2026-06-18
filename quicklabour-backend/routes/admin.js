@@ -51,7 +51,7 @@ router.get('/stats', protect, adminCheck, async (req, res) => {
 // @access  Private (Admin only)
 router.get('/clients', protect, adminCheck, async (req, res) => {
   try {
-    const clients = await Client.find({}).sort({ createdAt: -1 });
+    const clients = await Client.find({}).select('-idFile -avatar').sort({ createdAt: -1 });
     res.json(clients);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -80,7 +80,7 @@ router.delete('/clients/:id', protect, adminCheck, async (req, res) => {
 // @access  Private (Admin only)
 router.get('/workers', protect, adminCheck, async (req, res) => {
   try {
-    const workers = await Labour.find({}).sort({ createdAt: -1 });
+    const workers = await Labour.find({}).select('-idFile -avatar').sort({ createdAt: -1 });
     res.json(workers);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -110,8 +110,8 @@ router.delete('/workers/:id', protect, adminCheck, async (req, res) => {
 router.get('/jobs', protect, adminCheck, async (req, res) => {
   try {
     const jobs = await Job.find({})
-      .populate('client', 'fullName email phone address avatar')
-      .populate('hiredWorker', 'fullName occupation avatar rating phone address')
+      .populate('client', 'fullName email phone address')
+      .populate('hiredWorker', 'fullName occupation rating phone address')
       .sort({ createdAt: -1 });
     res.json(jobs);
   } catch (error) {
@@ -170,7 +170,7 @@ router.delete('/contacts/:id', protect, adminCheck, async (req, res) => {
 // @access  Private (Admin only)
 router.get('/reviews', protect, adminCheck, async (req, res) => {
   try {
-    const reviews = await Review.find({}).sort({ createdAt: -1 });
+    const reviews = await Review.find({}).select('-avatar').sort({ createdAt: -1 });
     res.json(reviews);
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api, LABOUR_INDUSTRIES } from '../utils/api';
 
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 // Helper to get pricing, icon and description for any specialty dynamically
 const getServicePricing = (specialtyName) => {
   for (const [industryName, info] of Object.entries(LABOUR_INDUSTRIES)) {
@@ -249,7 +257,13 @@ const PostJob = () => {
   }, [location.search]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.id]: e.target.value });
+    let value = e.target.value;
+    if (e.target.id === 'name' || e.target.id === 'location' || e.target.id === 'fullAddress') {
+      value = toTitleCase(value);
+    } else if (e.target.id === 'phone') {
+      value = value.replace(/\D/g, '');
+    }
+    setFormData({ ...formData, [e.target.id]: value });
   };
 
   // ── Live GPS ─────────────────────────────────
@@ -408,7 +422,7 @@ const PostJob = () => {
               {/* Contact Number */}
               <div className="col-md-6">
                 <label className="form-label fw-bold small text-muted">Contact Mobile Number</label>
-                <input type="tel" className="form-control rounded-3 py-2" id="phone" placeholder="e.g. +91 98765 43210" value={formData.phone} onChange={handleChange} required />
+                <input type="tel" className="form-control rounded-3 py-2" id="phone" placeholder="e.g. 9876543210" value={formData.phone} onChange={handleChange} required />
               </div>
 
               {/* Area / City + Live Location button */}

@@ -190,7 +190,7 @@ router.get('/', protect, async (req, res) => {
         keyword = 'Cleaning';
       }
 
-      let query = { status: 'Waiting...' };
+      let query = { status: 'Waiting...', money: { $lte: 500 } };
       
       // Look for jobs matching worker category
       if (keyword) {
@@ -539,6 +539,58 @@ router.put('/:id/complete', protect, async (req, res) => {
     }
 
     res.json({ message: 'Job completed and worker rating updated successfully!', job });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Delete a job request
+// @route   DELETE /api/jobs/:id
+// @access  Private (Client only)
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    // Check if the current user is the owner of the job
+    if (job.client.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ message: 'Not authorized to delete this job' });
+    }
+
+    // Refund points to worker if a worker was hired and job was not completed yet
+    if (job.hiredWorker && job.status !== 'Completed') {
+      const worker = await User.findById(job.hiredWorker);
+      if (worker) {
+        const pointsCost = getDeductionPoints(job.money);
+        worker.points = (worker.points || 0) + pointsCost;
+        if (worker.acceptedJobsCount > 0) {
+          worker.acceptedJobsCount -= 1;
+        }
+        if (worker.jobsCompleted > 0) {
+          worker.jobsCompleted -= 1;
+        }
+        await worker.save();
+      }
+    }
+
+    // Clean up any related chat messages
+    if (job.hiredWorker) {
+      const clientId = job.client.toString();
+      const workerId = job.hiredWorker.toString();
+      await Message.deleteMany({
+        $or: [
+          { senderId: clientId, receiverId: workerId },
+          { senderId: workerId, receiverId: clientId }
+        ]
+      });
+    }
+
+    await Job.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Job deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
