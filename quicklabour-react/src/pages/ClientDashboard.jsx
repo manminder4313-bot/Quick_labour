@@ -69,16 +69,25 @@ const ClientDashboard = () => {
   const [walletSuccessMsg, setWalletSuccessMsg] = useState('');
 
   // Safety, Penalty, and Dispute states
-  const [disputes, setDisputes] = useState(
-    JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]')
-  );
+  const [disputes, setDisputes] = useState([]);
   const [showClientDisputeModal, setShowClientDisputeModal] = useState(false);
   const [disputeJob, setDisputeJob] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
   const [disputePhoto, setDisputePhoto] = useState('');
   const [disputeCallLog, setDisputeCallLog] = useState('');
 
+  const fetchDisputes = async () => {
+    try {
+      const data = await api.getDisputes();
+      setDisputes(data);
+    } catch (err) {
+      console.error('Error fetching disputes:', err);
+    }
+  };
+
   const prevTotalBids = React.useRef(0);
+  const isFetchingRef = React.useRef(false);
+  const localVersionRef = React.useRef(0);
 
   const playChime = () => {
     try {
@@ -108,15 +117,6 @@ const ClientDashboard = () => {
     }
   };
 
-  // Sync disputes regularly with localStorage
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setDisputes(JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]'));
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
   const handleOpenClientDispute = (job) => {
     setDisputeJob(job);
     setDisputeReason('');
@@ -125,38 +125,39 @@ const ClientDashboard = () => {
     setShowClientDisputeModal(true);
   };
 
-  const handleSubmitClientDispute = () => {
+  const handleSubmitClientDispute = async () => {
     if (!disputeReason) {
       alert("Please provide the reason for your dispute.");
       return;
     }
-    const newDispute = {
-      _id: `disp_${Date.now()}`,
-      jobId: disputeJob._id,
-      jobTitle: disputeJob.title,
-      clientName: profileName,
-      workerName: disputeJob.hiredLabour?.fullName || 'Worker',
-      submittedBy: 'client',
-      reason: disputeReason,
-      photo: disputePhoto || 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=150&q=80',
-      callLog: disputeCallLog || 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=150&q=80',
-      gpsLocation: '19.0760° N, 72.8777° E',
-      status: 'Pending',
-      createdAt: new Date().toLocaleString()
-    };
-    const updatedDisputes = [newDispute, ...disputes];
-    setDisputes(updatedDisputes);
-    localStorage.setItem('quicklabour_disputes', JSON.stringify(updatedDisputes));
+    try {
+      const disputeData = {
+        jobId: disputeJob._id,
+        jobTitle: disputeJob.title,
+        clientName: profileName,
+        workerName: disputeJob.hiredWorker?.fullName || 'Worker',
+        submittedBy: 'client',
+        reason: disputeReason,
+        photo: disputePhoto || 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=150&q=80',
+        callLog: disputeCallLog || 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=150&q=80',
+        gpsLocation: '19.0760° N, 72.8777° E',
+      };
 
-    // Deduct client trust score slightly for filing dispute
-    const clientId = sessionStorage.getItem('userId') || 'client-demo';
-    const clientTrustScores = JSON.parse(localStorage.getItem('quicklabour_client_trust_scores') || '{}');
-    const currentScore = clientTrustScores[clientId] !== undefined ? clientTrustScores[clientId] : 88;
-    clientTrustScores[clientId] = Math.max(70, currentScore - 2);
-    localStorage.setItem('quicklabour_client_trust_scores', JSON.stringify(clientTrustScores));
+      const newDispute = await api.submitDispute(disputeData);
+      setDisputes(prev => [newDispute, ...prev]);
 
-    setShowClientDisputeModal(false);
-    alert("⚖️ Dispute registered successfully! QuickLabour Support will review photo evidence, GPS location, and call logs.");
+      // Deduct client trust score slightly for filing dispute
+      const clientId = sessionStorage.getItem('userId') || 'client-demo';
+      const clientTrustScores = JSON.parse(localStorage.getItem('quicklabour_client_trust_scores') || '{}');
+      const currentScore = clientTrustScores[clientId] !== undefined ? clientTrustScores[clientId] : 88;
+      clientTrustScores[clientId] = Math.max(70, currentScore - 2);
+      localStorage.setItem('quicklabour_client_trust_scores', JSON.stringify(clientTrustScores));
+
+      setShowClientDisputeModal(false);
+      alert("⚖️ Dispute registered successfully! QuickLabour Support will review photo evidence, GPS location, and call logs.");
+    } catch (err) {
+      alert("❌ Failed to submit dispute: " + err.message);
+    }
   };
 
   // Profile reactive states
@@ -276,6 +277,8 @@ const ClientDashboard = () => {
 
   // Fetch jobs from backend
   const fetchJobs = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       const data = await api.getJobs();
       // Sort jobs by createdAt descending so that newer posts show at the top
@@ -295,10 +298,12 @@ const ClientDashboard = () => {
         playChime();
       }
       prevTotalBids.current = currentBidsCount;
+      await fetchDisputes();
     } catch (error) {
       console.error('Error fetching jobs:', error.message);
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
@@ -314,8 +319,31 @@ const ClientDashboard = () => {
   };
 
   useEffect(() => {
-    fetchJobs();
-    fetchProfile();
+    let timerId;
+    let isActive = true;
+
+    const poll = async () => {
+      if (!isActive) return;
+      try {
+        const { version } = await api.getJobsStateVersion();
+        if (version !== localVersionRef.current) {
+          localVersionRef.current = version;
+          await Promise.all([fetchJobs(), fetchProfile()]);
+        }
+      } catch (err) {
+        console.error("Failed to check state version:", err);
+      }
+      if (isActive) {
+        timerId = setTimeout(poll, 4000); // Check version every 4 seconds
+      }
+    };
+
+    poll();
+
+    return () => {
+      isActive = false;
+      clearTimeout(timerId);
+    };
   }, []);
 
   // Map backend jobs into dashboard format
@@ -330,11 +358,18 @@ const ClientDashboard = () => {
     workersNeeded: job.workersNeeded || 1,
     status: job.status === 'Waiting...' ? 'Open for Bids' : (job.status === 'Accepted' ? 'Hired & In Progress' : (job.status === 'Completed' ? 'Work Completed' : 'Rejected')),
     rawStatus: job.status,
+    subStatus: job.subStatus || 'Accepted',
+    trackingActive: job.trackingActive || false,
+    workerLat: job.workerLat,
+    workerLng: job.workerLng,
+    clientLat: job.latitude,
+    clientLng: job.longitude,
+    locationAddress: job.fullAddress || job.location,
     hiredWorker: job.hiredWorker ? {
       name: job.hiredWorker.fullName,
       role: job.hiredWorker.occupation || 'Trade Worker',
       rate: `₹${job.money}/day`,
-      avatar: job.hiredWorker.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&q=80'
+      avatar: job.hiredWorker.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.hiredWorker.fullName || 'Worker')}&background=random&color=fff&size=128`
     } : null,
     bidders: (job.bidders || []).map(b => ({
       id: b.worker?._id,
@@ -343,7 +378,7 @@ const ClientDashboard = () => {
       rating: b.worker?.rating || '4.8',
       jobs: b.worker?.jobsCompleted || '12',
       rate: b.rate,
-      avatar: b.worker?.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&q=80',
+      avatar: b.worker?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(b.worker?.fullName || 'Worker')}&background=random&color=fff&size=128`,
       skills: b.worker?.skills || []
     }))
   }));
@@ -363,6 +398,24 @@ const ClientDashboard = () => {
 
   // Rating & Payment Modal States
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [showTrackingModal, setShowTrackingModal] = useState(false);
+  const [trackingJob, setTrackingJob] = useState(null);
+
+  const getDistanceInKm = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+      ; 
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const d = R * c; // Distance in km
+    return d.toFixed(2);
+  };
+
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedJobAmount, setSelectedJobAmount] = useState(0);
   const [paymentMode, setPaymentMode] = useState('cash'); // 'cash' or 'online'
@@ -435,7 +488,7 @@ const ClientDashboard = () => {
   };
 
   const handleDeleteJob = async (jobId) => {
-    if (window.confirm("⚠️ Are you sure you want to delete this job request? If a worker was hired, their points will be refunded.")) {
+    if (window.confirm("⚠️ Are you sure you want to delete this job request? If a worker was hired, their tokens will be refunded.")) {
       try {
         await api.deleteJob(jobId);
         fetchJobs(); // Refresh jobs list
@@ -786,7 +839,7 @@ const ClientDashboard = () => {
 
           {/* Stats Row */}
           <div className="row g-4 mb-5">
-            <div className="col-md-3">
+            <div className="col-md-3 col-6">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper blue">
                   <i className="bi bi-file-earmark-text-fill"></i>
@@ -797,7 +850,7 @@ const ClientDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-md-3">
+            <div className="col-md-3 col-6">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper orange">
                   <i className="bi bi-people-fill"></i>
@@ -808,7 +861,7 @@ const ClientDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-md-3">
+            <div className="col-md-3 col-6">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper green">
                   <i className="bi bi-wallet2"></i>
@@ -819,7 +872,7 @@ const ClientDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-md-3">
+            <div className="col-md-3 col-6">
               <div className="dashboard-stat-card cursor-pointer" onClick={() => { setActiveWalletTab('scanner'); setShowWalletHubModal(true); }} style={{ cursor: 'pointer' }}>
                 <div className="stat-icon-wrapper purple">
                   <i className="bi bi-wallet-fill"></i>
@@ -975,30 +1028,58 @@ const ClientDashboard = () => {
 
                           {/* Matched Hired Worker Information */}
                           {job.hiredWorker ? (
-                            <div className="mt-3 bg-success-subtle p-3 rounded-16 border border-success border-opacity-25 d-flex justify-content-between align-items-center">
-                              <div className="d-flex align-items-center gap-3">
-                                <img src={job.hiredWorker.avatar} alt={job.hiredWorker.name} className="bidder-profile-img border-success" />
-                                <div>
-                                  <span className="small text-success fw-700"><i className="bi bi-check-circle-fill me-1"></i>Hired Worker Matched</span>
-                                  <h6 className="mb-0 mt-1">{job.hiredWorker.name}</h6>
-                                  <p className="text-muted small mt-1">{job.hiredWorker.role}</p>
+                            <div className="mt-3 bg-success-subtle p-3 rounded-16 border border-success border-opacity-25">
+                              <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                                <div className="d-flex align-items-center gap-3">
+                                  <img src={job.hiredWorker.avatar} alt={job.hiredWorker.name} className="bidder-profile-img border-success" />
+                                  <div>
+                                    <span className="small text-success fw-700"><i className="bi bi-check-circle-fill me-1"></i>Hired Worker Matched</span>
+                                    <h6 className="mb-0 mt-1">{job.hiredWorker.name}</h6>
+                                    <p className="text-muted small mt-1 mb-1">{job.hiredWorker.role}</p>
+                                    {job.subStatus && (
+                                      <span className={`badge ${
+                                        job.subStatus === 'Arrived' ? 'bg-success' : job.subStatus === 'On the Way' ? 'bg-warning animate-pulse' : 'bg-secondary'
+                                      } text-white px-2.5 py-1 rounded-pill`} style={{ fontSize: '0.72rem', fontWeight: 'bold' }}>
+                                        Status: {job.subStatus}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-end">
+                                  <div className="fw-800 text-success mb-1" style={{ fontSize: '1.05rem' }}>{job.hiredWorker.rate}</div>
+                                  <div className="d-flex gap-2 justify-content-end align-items-center">
+                                    <button className="btn-action-outline py-1 px-3" style={{ height: '34px', fontSize: '0.85rem' }}><i className="bi bi-chat-dots-fill me-1"></i>Message</button>
+                                    {job.rawStatus === 'Accepted' && (
+                                      <button
+                                        className="btn btn-success py-1 px-3 fw-bold rounded-12 shadow-sm d-inline-flex align-items-center justify-content-center"
+                                        style={{ height: '34px', fontSize: '0.85rem', background: 'linear-gradient(135deg,#198754,#146c43)', border: 'none' }}
+                                        onClick={() => openCompleteModal(job.id)}
+                                      >
+                                        <i className="bi bi-check-circle-fill me-1"></i>Yes, Work is Done
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="text-end">
-                                <div className="fw-800 text-success mb-1" style={{ fontSize: '1.05rem' }}>{job.hiredWorker.rate}</div>
-                                <div className="d-flex gap-2 justify-content-end align-items-center">
-                                  <button className="btn-action-outline py-1 px-3" style={{ height: '34px', fontSize: '0.85rem' }}><i className="bi bi-chat-dots-fill me-1"></i>Message</button>
-                                  {job.rawStatus === 'Accepted' && (
-                                    <button
-                                      className="btn btn-success py-1 px-3 fw-bold rounded-12 shadow-sm d-inline-flex align-items-center justify-content-center"
-                                      style={{ height: '34px', fontSize: '0.85rem', background: 'linear-gradient(135deg,#198754,#146c43)', border: 'none' }}
-                                      onClick={() => openCompleteModal(job.id)}
-                                    >
-                                      <i className="bi bi-check-circle-fill me-1"></i>Yes, Work is Done
-                                    </button>
-                                  )}
+
+                              {/* Live GPS tracking section */}
+                              {job.trackingActive && job.workerLat && job.workerLng && (
+                                <div className="mt-3 p-3 rounded-12 border d-flex justify-content-between align-items-center flex-wrap gap-2" style={{ background: 'rgba(25, 135, 84, 0.05)', borderStyle: 'dashed' }}>
+                                  <div className="d-flex align-items-center gap-2">
+                                    <div className="spinner-grow spinner-grow-sm text-success animate-pulse" role="status"></div>
+                                    <span className="small fw-bold text-success">
+                                      📡 Worker is travelling to your location ({getDistanceInKm(job.clientLat, job.clientLng, job.workerLat, job.workerLng) || '1.5'} km away)
+                                    </span>
+                                  </div>
+                                  <button
+                                    className="btn btn-sm btn-primary fw-bold rounded-10 px-3 py-1.5 text-white"
+                                    style={{ fontSize: '0.75rem', background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }}
+                                    onClick={() => { setTrackingJob(job); setShowTrackingModal(true); }}
+                                  >
+                                    🗺️ Track Live
+                                  </button>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           ) : (
                             <div className="w-100">
@@ -1006,52 +1087,6 @@ const ClientDashboard = () => {
                                 <div className="spinner-grow spinner-grow-sm text-warning" role="status"></div>
                                 <span className="text-muted small fw-bold">🔍 Matching and routing this request to nearby {job.title.split(' ')[0]}s...</span>
                               </div>
-
-                              {job.bidders && job.bidders.length > 0 ? (
-                                <div className="mt-4">
-                                  <h6 className="fw-800 text-primary mb-3" style={{ fontSize: '0.9rem', fontWeight: 800 }}>
-                                    <i className="bi bi-people-fill me-2"></i>Available Proposals &amp; Bids ({job.bidders.length})
-                                  </h6>
-                                  <div className="d-flex flex-column gap-3">
-                                    {job.bidders.map((bidder) => (
-                                      <div
-                                        key={bidder.id}
-                                        className="p-3 rounded-16 border bg-white shadow-sm d-flex justify-content-between align-items-center flex-wrap gap-3"
-                                        style={{ borderLeft: '4px solid #0d6efd', transition: 'all 0.2s' }}
-                                      >
-                                        <div className="d-flex align-items-center gap-3">
-                                          <img
-                                            src={bidder.avatar}
-                                            alt={bidder.name}
-                                            className="bidder-profile-img rounded-circle"
-                                            style={{ width: '48px', height: '48px', objectFit: 'cover', border: '2px solid #e2e8f0' }}
-                                          />
-                                          <div>
-                                            <h6 className="mb-0 fw-800 text-dark" style={{ fontSize: '0.92rem', fontWeight: 800 }}>{bidder.name}</h6>
-                                            <p className="text-muted small mb-0 mt-0.5" style={{ fontSize: '0.78rem' }}>
-                                              {bidder.role} · ⭐ <span className="text-warning fw-bold">{bidder.rating}</span> ({bidder.jobs} jobs completed)
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <div className="text-end d-flex align-items-center gap-3 ms-auto">
-                                          <div className="fw-800 text-success" style={{ fontSize: '1.05rem', fontWeight: 800 }}>{bidder.rate}</div>
-                                          <button
-                                            className="btn btn-primary px-3 py-1.5 fw-bold rounded-12 shadow-sm border-0 transition text-white d-flex align-items-center justify-content-center"
-                                            style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', fontSize: '0.82rem', height: '34px', cursor: 'pointer' }}
-                                            onClick={() => handleApproveHire(job.id, bidder.id, bidder.name, bidder.rate)}
-                                          >
-                                            🤝 Hire Worker
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="mt-3 bg-light p-3 rounded-16 border text-center text-muted small">
-                                  <i className="bi bi-clock-history me-1"></i> Waiting for matching workers to place bids on your request...
-                                </div>
-                              )}
                             </div>
                           )}
                         </div>
@@ -1278,6 +1313,71 @@ const ClientDashboard = () => {
         currentUserRole="client"
         currentUserAvatar={profileAvatar}
       />
+
+      {/* ── Live GPS Tracking Modal ── */}
+      {showTrackingModal && trackingJob && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(10px)', zIndex: 1070 }}>
+          <div className="modal-dialog modal-dialog-centered modal-lg" style={{ maxWidth: '850px' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+              
+              {/* Header */}
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #0a2540 0%, #1a3a5c 100%)', borderBottom: 'none' }}>
+                <div>
+                  <h5 className="modal-title fw-800 m-0 d-flex align-items-center gap-2">
+                    <i className="bi bi-compass-fill text-warning animate-bounce" style={{ fontSize: '1.25rem' }}></i>
+                    Live Worker GPS Tracking
+                  </h5>
+                  <p className="text-white-50 small m-0 mt-1 fw-600">
+                    Tracking {trackingJob.hiredWorker?.name || 'Worker'} • {trackingJob.title}
+                  </p>
+                </div>
+                <button type="button" className="btn-close btn-close-white" onClick={() => { setShowTrackingModal(false); setTrackingJob(null); }}></button>
+              </div>
+
+              {/* Map Iframe container */}
+              <div className="modal-body p-0" style={{ flex: 1, overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
+                <iframe
+                  title="Live GPS Tracking Route"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                  src={`https://maps.google.com/maps?saddr=${encodeURIComponent(`${trackingJob.workerLat},${trackingJob.workerLng}`)}&daddr=${encodeURIComponent(`${trackingJob.clientLat},${trackingJob.clientLng}`)}&output=embed&iwloc=near`}
+                  allowFullScreen
+                ></iframe>
+              </div>
+
+              {/* Footer */}
+              <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-3 justify-content-between align-items-center">
+                <div className="d-flex align-items-center gap-2">
+                  <span className="badge bg-success bg-opacity-10 text-success px-3 py-2 rounded-pill fw-800 d-flex align-items-center gap-1.5">
+                    <span className="spinner-grow spinner-grow-sm text-success" role="status" style={{ width: '8px', height: '8px' }}></span> 
+                    Live Distance: {getDistanceInKm(trackingJob.clientLat, trackingJob.clientLng, trackingJob.workerLat, trackingJob.workerLng) || '1.5'} km
+                  </span>
+                </div>
+                <div className="d-flex gap-2">
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${trackingJob.workerLat},${trackingJob.workerLng}`)}&destination=${encodeURIComponent(`${trackingJob.clientLat},${trackingJob.clientLng}`)}&travelmode=driving`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-primary px-4 py-2 rounded-12 fw-bold d-flex align-items-center gap-2 text-decoration-none text-white"
+                    style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', border: 'none' }}
+                  >
+                    <i className="bi bi-box-arrow-up-right"></i> Open in Google Maps
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary px-4 py-2 rounded-12 fw-bold"
+                    onClick={() => { setShowTrackingModal(false); setTrackingJob(null); }}
+                  >
+                    Close Tracking
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Rate and Complete Job Modal ── */}
       {showRatingModal && (
@@ -2424,7 +2524,16 @@ const ClientDashboard = () => {
                   <input
                     type="file"
                     className="form-control rounded-12"
-                    onChange={(e) => setDisputePhoto(URL.createObjectURL(e.target.files[0]))}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setDisputePhoto(reader.result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
                     accept="image/*"
                   />
                   {disputePhoto && (
@@ -2437,7 +2546,16 @@ const ClientDashboard = () => {
                   <input
                     type="file"
                     className="form-control rounded-12"
-                    onChange={(e) => setDisputeCallLog(URL.createObjectURL(e.target.files[0]))}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setDisputeCallLog(reader.result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
                     accept="image/*"
                   />
                   {disputeCallLog && (

@@ -94,7 +94,7 @@ export const api = {
     }
     if (data.role === 'worker') {
       sessionStorage.setItem('userOccupation', data.occupation);
-      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userTokens', data.tokens !== undefined ? data.tokens : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
       sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
       sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
@@ -126,7 +126,7 @@ export const api = {
     }
     if (data.role === 'worker') {
       sessionStorage.setItem('userOccupation', data.occupation);
-      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userTokens', data.tokens !== undefined ? data.tokens : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
       sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
       sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
@@ -142,7 +142,7 @@ export const api = {
       sessionStorage.setItem('userCreatedAt', data.createdAt);
     }
     if (data.role === 'worker') {
-      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userTokens', data.tokens !== undefined ? data.tokens : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
       sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
       sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
@@ -155,8 +155,8 @@ export const api = {
     if (data.walletBalance !== undefined) {
       sessionStorage.setItem('userWalletBalance', data.walletBalance);
     }
-    if (data.points !== undefined) {
-      sessionStorage.setItem('userPoints', data.points);
+    if (data.tokens !== undefined) {
+      sessionStorage.setItem('userTokens', data.tokens);
     }
     if (data.acceptedJobsCount !== undefined) {
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount);
@@ -187,7 +187,7 @@ export const api = {
       sessionStorage.setItem('userCreatedAt', data.createdAt);
     }
     if (data.role === 'worker') {
-      sessionStorage.setItem('userPoints', data.points !== undefined ? data.points : 0);
+      sessionStorage.setItem('userTokens', data.tokens !== undefined ? data.tokens : 0);
       sessionStorage.setItem('userAcceptedJobs', data.acceptedJobsCount !== undefined ? data.acceptedJobsCount : 0);
       sessionStorage.setItem('userJobsCompleted', data.jobsCompleted !== undefined ? data.jobsCompleted : 0);
       sessionStorage.setItem('userRating', data.rating !== undefined ? data.rating : 0);
@@ -201,7 +201,7 @@ export const api = {
       body: JSON.stringify({ planType }),
     });
     if (data.user) {
-      sessionStorage.setItem('userPoints', data.user.points !== undefined ? data.user.points : 0);
+      sessionStorage.setItem('userTokens', data.user.tokens !== undefined ? data.user.tokens : 0);
       sessionStorage.setItem('userAcceptedJobs', data.user.acceptedJobsCount !== undefined ? data.user.acceptedJobsCount : 0);
     }
     return data;
@@ -250,13 +250,13 @@ export const api = {
     return data;
   },
 
-  rechargePointsWallet: async (planType) => {
-    const data = await request('/auth/recharge-points-wallet', {
+  rechargeTokensWallet: async (planType) => {
+    const data = await request('/auth/recharge-tokens-wallet', {
       method: 'POST',
       body: JSON.stringify({ planType }),
     });
     sessionStorage.setItem('userWalletBalance', data.walletBalance !== undefined ? data.walletBalance : 0);
-    sessionStorage.setItem('userPoints', data.updatedPoints !== undefined ? data.updatedPoints : 0);
+    sessionStorage.setItem('userTokens', data.updatedTokens !== undefined ? data.updatedTokens : 0);
     return data;
   },
 
@@ -282,6 +282,10 @@ export const api = {
     return request('/jobs');
   },
 
+  getJobsStateVersion: async () => {
+    return request('/jobs/state-version');
+  },
+
   hireWorker: async (jobId, workerId, rate) => {
     return request(`/jobs/${jobId}/hire`, {
       method: 'PUT',
@@ -300,6 +304,13 @@ export const api = {
     return request(`/jobs/${jobId}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status }),
+    });
+  },
+
+  updateJobTracking: async (jobId, trackingData) => {
+    return request(`/jobs/${jobId}/track`, {
+      method: 'PUT',
+      body: JSON.stringify(trackingData),
     });
   },
 
@@ -334,6 +345,27 @@ export const api = {
     sessionStorage.clear();
   },
 
+  forgotPasswordOtp: async (emailOrPhone) => {
+    return request('/auth/forgot-password/otp', {
+      method: 'POST',
+      body: JSON.stringify({ emailOrPhone }),
+    });
+  },
+
+  verifyForgotPasswordOtp: async (phone, otp) => {
+    return request('/auth/forgot-password/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone, otp }),
+    });
+  },
+
+  resetPassword: async (phone, otp, newPassword) => {
+    return request('/auth/forgot-password/reset', {
+      method: 'POST',
+      body: JSON.stringify({ phone, otp, newPassword }),
+    });
+  },
+
   createPaymentIntent: async (planType) => {
     return request('/payments/create-intent', {
       method: 'POST',
@@ -345,6 +377,56 @@ export const api = {
     return request('/payments/verify-and-credit', {
       method: 'POST',
       body: JSON.stringify({ intentId, planType, isSimulated }),
+    });
+  },
+
+  triggerSos: async (jobId, emergencyType, latitude, longitude, claimRefund) => {
+    return request(`/jobs/${jobId}/sos`, {
+      method: 'POST',
+      body: JSON.stringify({ emergencyType, latitude, longitude, claimRefund }),
+    });
+  },
+
+  getMySos: async () => {
+    return request('/jobs/my-sos');
+  },
+
+  getAdminSos: async () => {
+    return request('/admin/sos');
+  },
+
+  verifyAdminSos: async (alertId, status) => {
+    return request(`/admin/sos/${alertId}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  getDisputes: async () => {
+    return request('/jobs/disputes');
+  },
+
+  submitDispute: async (disputeData) => {
+    return request('/jobs/disputes', {
+      method: 'POST',
+      body: JSON.stringify(disputeData),
+    });
+  },
+
+  getAdminDisputes: async () => {
+    return request('/admin/disputes');
+  },
+
+  resolveAdminDispute: async (disputeId, decision) => {
+    return request(`/admin/disputes/${disputeId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    });
+  },
+
+  deleteAdminDispute: async (disputeId) => {
+    return request(`/admin/disputes/${disputeId}`, {
+      method: 'DELETE',
     });
   }
 };

@@ -5,6 +5,33 @@ import { api } from '../utils/api';
 const AdminDashboard = () => {
   const navigate = useNavigate();
   
+  const parseGpsCoords = (gpsStr) => {
+    if (!gpsStr) return null;
+    const match = gpsStr.match(/Lat:\s*([-\d.]+)[^\d]*Lng:\s*([-\d.]+)/i);
+    if (match) {
+      return {
+        lat: parseFloat(match[1]),
+        lng: parseFloat(match[2])
+      };
+    }
+    return null;
+  };
+
+  const getDistanceInKm = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+      ; 
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const d = R * c; // Distance in km
+    return d.toFixed(2);
+  };
+
   const getAvatarUrl = (avatar, name) => {
     if (!avatar || 
         avatar.includes('images.unsplash.com/photo-1534528741775-53994a69daeb') || 
@@ -34,7 +61,8 @@ const AdminDashboard = () => {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
-  const [walletBalance, setWalletBalance] = useState(0);
+  const [walletBalance, setWalletBalance] = useState(Number(sessionStorage.getItem('userWalletBalance') || 0));
+  const [adminSosAlerts, setAdminSosAlerts] = useState([]);
 
   // Admin Wallet Hub Sub-Tabs and forms states
   const [activeWalletTab, setActiveWalletTab] = useState('history'); // 'scanner', 'add', 'withdraw', 'history'
@@ -183,39 +211,57 @@ const AdminDashboard = () => {
   });
   const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [adminError, setAdminError] = useState('');
-  const [disputes, setDisputes] = useState(
-    JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]')
-  );
+  const [disputes, setDisputes] = useState([]);
 
-  // Sync disputes regularly
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setDisputes(JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]'));
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  const handleResolveDispute = (disputeId, decision) => {
-    const updated = disputes.map(d => {
-      if (d._id === disputeId) {
-        return { ...d, status: 'Resolved', resolutionDecision: decision };
-      }
-      return d;
-    });
-    setDisputes(updated);
-    localStorage.setItem('quicklabour_disputes', JSON.stringify(updated));
-    showClassyAlert(`Dispute resolved successfully. Decision: "${decision}" recorded.`, 'Dispute Resolved', 'success');
+  const fetchDisputes = async () => {
+    try {
+      const data = await api.getAdminDisputes();
+      setDisputes(data);
+    } catch (err) {
+      console.error('Error fetching disputes:', err);
+    }
   };
 
-  const handleDeleteDispute = (disputeId) => {
+  const handleResolveDispute = async (disputeId, decision) => {
+    try {
+      const res = await api.resolveAdminDispute(disputeId, decision);
+      setDisputes(prev => prev.map(d => d._id === disputeId ? res.dispute : d));
+      showClassyAlert(`Dispute resolved successfully. Decision: "${decision}" recorded.`, 'Dispute Resolved', 'success');
+    } catch (err) {
+      showClassyAlert(`Failed to resolve dispute: ${err.message}`, 'Resolution Failed', 'danger');
+    }
+  };
+
+  const handleDeleteDispute = async (disputeId) => {
     if (!window.confirm('Are you absolutely sure you want to delete this dispute record? This action is irreversible.')) {
       return;
     }
-    const updated = disputes.filter(d => d._id !== disputeId);
-    setDisputes(updated);
-    localStorage.setItem('quicklabour_disputes', JSON.stringify(updated));
-    showClassyAlert('Dispute record deleted successfully.', 'Dispute Deleted', 'success');
+    try {
+      await api.deleteAdminDispute(disputeId);
+      setDisputes(prev => prev.filter(d => d._id !== disputeId));
+      showClassyAlert('Dispute record deleted successfully.', 'Dispute Deleted', 'success');
+    } catch (err) {
+      showClassyAlert(`Failed to delete dispute: ${err.message}`, 'Deletion Failed', 'danger');
+    }
+  };
+
+  const fetchAdminSosAlerts = async () => {
+    try {
+      const data = await api.getAdminSos();
+      setAdminSosAlerts(data);
+    } catch (err) {
+      console.error('Error fetching admin SOS alerts:', err);
+    }
+  };
+
+  const handleVerifySosAlert = async (alertId, status) => {
+    try {
+      await api.verifyAdminSos(alertId, status);
+      showClassyAlert(`SOS alert status updated to: ${status}. 50% tokens refund has been processed if verified.`, 'SOS Verification Complete', 'success');
+      await fetchAdminSosAlerts();
+    } catch (err) {
+      showClassyAlert("Failed to verify SOS alert: " + err.message, "Action Failed", "danger");
+    }
   };
 
 
@@ -233,6 +279,9 @@ const AdminDashboard = () => {
     // Root admin has total access
     const email = sessionStorage.getItem('userEmail');
     if (email === 'admin@quicklabour.com') return true;
+    if (tab === 'sos') {
+      return userPermissions.includes('overview') || userPermissions.includes('admins') || userPermissions.includes('disputes');
+    }
     const isAllowed = tab === 'disputes'
       ? (userPermissions.includes('admins') || userPermissions.includes('overview') || userPermissions.includes('disputes'))
       : userPermissions.includes(tab);
@@ -253,7 +302,7 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   useEffect(() => {
-    const tabsList = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins', 'disputes'];
+    const tabsList = ['overview', 'clients', 'workers', 'jobs', 'reviews', 'contacts', 'admins', 'disputes', 'sos'];
     const allowedTabs = tabsList.filter(t => hasPermission(t));
     if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
       setActiveTab(allowedTabs[0]);
@@ -364,6 +413,8 @@ const AdminDashboard = () => {
         const adminsRes = await api.get('/admin/admins');
         setAdmins(adminsRes);
       }
+      await fetchAdminSosAlerts();
+      await fetchDisputes();
     } catch (err) {
       console.error('fetchAdminData error:', err);
       setError(err.message || 'Failed to fetch administrative data');
@@ -636,11 +687,16 @@ const AdminDashboard = () => {
                 ⚖️ Disputes Panel ({JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]').length})
               </button>
             )}
+            {hasPermission('overview') && (
+              <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'sos' ? 'active bg-danger text-white animate-pulse' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('sos'); setSearchTerm(''); }}>
+                🚨 SOS Alerts ({adminSosAlerts.length})
+              </button>
+            )}
           </div>
         </div>
 
         {/* Optional Search / Filtering Bar */}
-        {activeTab !== 'overview' && (
+        {activeTab !== 'overview' && activeTab !== 'sos' && (
           <div className="mb-4">
             <div className="input-group shadow-sm rounded-3 overflow-hidden">
               <span className="input-group-text bg-white border-0"><i className="bi bi-search"></i></span>
@@ -793,7 +849,7 @@ const AdminDashboard = () => {
                   <div className="col-12 col-md-7">
                     <h5 className="fw-bold text-dark mb-2">Receive Platform Revenues</h5>
                     <p className="text-muted small">
-                      This QR code represents the official Admin Receiving Wallet. Workers can scan this code to pay registration fees, points subscription top-ups, or custom service charges directly.
+                      This QR code represents the official Admin Receiving Wallet. Workers can scan this code to pay registration fees, tokens subscription top-ups, or custom service charges directly.
                     </p>
                     <div className="p-3 bg-light rounded-3 border mb-3">
                       <div className="small text-muted mb-1"><strong>UPI ID:</strong> quicklabour@icici</div>
@@ -801,7 +857,7 @@ const AdminDashboard = () => {
                       <div className="small text-muted mb-0"><strong>Supported Apps:</strong> Google Pay, PhonePe, Paytm, BHIM</div>
                     </div>
                     <div className="alert alert-info py-2 px-3 rounded-3" style={{ fontSize: '0.85rem' }}>
-                      <i className="bi bi-info-circle me-1"></i> Subscription payments made by labourers through their points subscriptions automatically credit the Admin's wallet and log details into the statement!
+                      <i className="bi bi-info-circle me-1"></i> Subscription payments made by labourers through their tokens subscriptions automatically credit the Admin's wallet and log details into the statement!
                     </div>
                   </div>
                 </div>
@@ -1248,7 +1304,7 @@ const AdminDashboard = () => {
                             <div className="fw-bold text-warning">{worker.rating || 4.9} ⭐</div>
                             <div className="small text-muted mb-1">{worker.jobsCompleted || 0} completions</div>
                             <span className="badge bg-warning bg-opacity-20 text-dark rounded-pill fw-bold small px-2 py-1" style={{ border: '1px solid #ffd43b', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                              🪙 {worker.points !== undefined ? worker.points : 0} Points
+                              🪙 {worker.tokens !== undefined ? worker.tokens : 0} Tokens
                             </span>
                           </td>
                           <td>
@@ -1281,7 +1337,7 @@ const AdminDashboard = () => {
                                   role: 'Worker / Labour',
                                   phone: worker.phone,
                                   address: worker.address || 'Not Provided',
-                                  extra: `Occupation: ${worker.occupation} | Rating: ${worker.rating || '4.9'} ⭐ | Points Balance: ${worker.points !== undefined ? worker.points : 0} Points`
+                                  extra: `Occupation: ${worker.occupation} | Rating: ${worker.rating || '4.9'} ⭐ | Tokens Balance: ${worker.tokens !== undefined ? worker.tokens : 0} Tokens`
                                 })}
                               >
                                 ℹ️ More Details
@@ -1539,73 +1595,276 @@ const AdminDashboard = () => {
 
               {disputes.length > 0 ? (
                 <div className="row g-4">
-                  {disputes.map((disp) => (
-                    <div key={disp._id} className="col-md-6 col-lg-6">
-                      <div className="card rounded-4 shadow-sm border-0 p-4 bg-white text-start h-100">
+                  {disputes.map((disp) => {
+                    const isNoShow = disp.reason && disp.reason.includes('Client No-Show');
+                    
+                    return (
+                      <div key={disp._id} className="col-12 mb-4">
+                        <div className="card rounded-4 shadow-sm border bg-white text-start overflow-hidden" style={{ borderLeft: '6px solid #dc2626' }}>
+                          <div className="row g-0">
+                            
+                            {/* Left side: Case info & actions */}
+                            <div className="col-lg-5 p-4 border-end d-flex flex-column justify-content-between">
+                              <div>
+                                <div className="d-flex justify-content-between align-items-start mb-3">
+                                  <div>
+                                    <span className="badge bg-danger text-white fw-bold px-2.5 py-1 rounded-pill small" style={{ fontSize: '0.72rem' }}>
+                                      {isNoShow ? '⚠️ CLIENT NO-SHOW COMPENSATION CLAIM' : `⚖️ DISPUTE FILED BY ${disp.submittedBy.toUpperCase()}`}
+                                    </span>
+                                    <h5 className="fw-bold text-dark mt-2 mb-0">{disp.jobTitle}</h5>
+                                    <span className="small text-muted" style={{ fontSize: '0.75rem' }}>Submitted: {disp.createdAt}</span>
+                                  </div>
+                                  <div className="d-flex align-items-center gap-2">
+                                    <span className={`badge px-2 py-1 rounded-pill ${disp.status === 'Resolved' ? 'bg-success text-white' : 'bg-warning text-white'}`}>
+                                      {disp.status}
+                                    </span>
+                                    <button
+                                      className="btn btn-sm btn-outline-danger border-0 rounded-circle"
+                                      onClick={() => handleDeleteDispute(disp._id)}
+                                      title="Delete Dispute"
+                                    >
+                                      <i className="bi bi-trash-fill"></i>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="mb-3 p-3 rounded-3" style={{ background: '#fef2f2', border: '1px solid #fee2e2' }}>
+                                  <div className="small text-dark mb-1"><strong>Worker Name:</strong> {disp.workerName}</div>
+                                  <div className="small text-dark mb-2"><strong>Client Name:</strong> {disp.clientName}</div>
+                                  <hr className="my-2 text-muted" />
+                                  <div className="small text-danger fw-bold mb-1">Incident Report:</div>
+                                  <div className="small text-dark font-monospace" style={{ fontSize: '0.82rem', lineHeight: '1.4' }}>"{disp.reason}"</div>
+                                </div>
+                              </div>
+
+                              <div>
+                                {disp.status !== 'Resolved' ? (
+                                  <div className="d-flex gap-2 flex-wrap mt-3">
+                                    {isNoShow ? (
+                                      <>
+                                        <button
+                                          onClick={() => handleResolveDispute(disp._id, `Approved. Visit compensation of ₹50 paid to worker (${disp.workerName}) and client (${disp.clientName}) penalized.`)}
+                                          className="btn btn-success fw-bold flex-fill rounded-12 py-2.5 text-white"
+                                          style={{ fontSize: '0.82rem' }}
+                                        >
+                                          Approve Compensation (₹50)
+                                        </button>
+                                        <button
+                                          onClick={() => handleResolveDispute(disp._id, `Rejected. Insufficient location or call logs proof.`)}
+                                          className="btn btn-outline-secondary fw-bold flex-fill rounded-12 py-2.5"
+                                          style={{ fontSize: '0.82rem' }}
+                                        >
+                                          Reject Claim
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Client (${disp.clientName}). Worker penalized.`)}
+                                          className="btn btn-outline-primary fw-bold flex-fill rounded-12 py-2.5"
+                                          style={{ fontSize: '0.82rem' }}
+                                        >
+                                          Rule in favor of Client
+                                        </button>
+                                        <button
+                                          onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Worker (${disp.workerName}). Compensation confirmed.`)}
+                                          className="btn btn-outline-success fw-bold flex-fill rounded-12 py-2.5"
+                                          style={{ fontSize: '0.82rem' }}
+                                        >
+                                          Rule in favor of Worker
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="small text-success fw-bold p-2.5 bg-success bg-opacity-5 rounded-12 border border-success border-opacity-10 mt-3">
+                                    <i className="bi bi-shield-check me-1"></i> Resolved Decision: "{disp.resolutionDecision}"
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Right side: Side-by-Side Evidence Review (Selfie, Call logs, and Live GPS Validation Map) */}
+                            <div className="col-lg-7 p-4 bg-light bg-opacity-50 d-flex flex-column justify-content-between">
+                              <div>
+                                <h6 className="fw-800 text-dark mb-3"><i className="bi bi-file-earmark-check-fill text-primary me-1"></i>Side-by-Side Evidence Review</h6>
+                                
+                                <div className="row g-3 mb-3">
+                                  <div className="col-6 col-sm-4 text-center">
+                                    <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>📍 Reported Photo Proof</span>
+                                    <div className="position-relative border rounded overflow-hidden shadow-sm bg-white" style={{ height: '110px' }}>
+                                      <img 
+                                        src={disp.photo} 
+                                        alt="Location Selfie" 
+                                        className="w-100 h-100" 
+                                        style={{ objectFit: 'cover', cursor: 'pointer' }} 
+                                        onClick={() => setSelectedDoc({ name: `${disp.workerName} Selfie/Location Proof`, type: 'Selfie Photo', file: disp.photo })} 
+                                      />
+                                      <div className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5" style={{ fontSize: '0.62rem', cursor: 'pointer' }}>Zoom 🔍</div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="col-6 col-sm-4 text-center">
+                                    <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>📞 Call Log Screenshot</span>
+                                    <div className="position-relative border rounded overflow-hidden shadow-sm bg-white" style={{ height: '110px' }}>
+                                      <img 
+                                        src={disp.callLog} 
+                                        alt="Call Logs" 
+                                        className="w-100 h-100" 
+                                        style={{ objectFit: 'cover', cursor: 'pointer' }} 
+                                        onClick={() => setSelectedDoc({ name: `${disp.workerName} Call Log Proof`, type: 'Call Screenshot', file: disp.callLog })} 
+                                      />
+                                      <div className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5" style={{ fontSize: '0.62rem', cursor: 'pointer' }}>Zoom 🔍</div>
+                                    </div>
+                                  </div>
+
+                                  <div className="col-12 col-sm-4">
+                                    <span className="d-block small text-muted fw-bold mb-1 text-center" style={{ fontSize: '0.7rem' }}>GPS Audit Info</span>
+                                    <div className="p-3 bg-white border rounded shadow-sm d-flex flex-column justify-content-center align-items-center h-100" style={{ minHeight: '110px' }}>
+                                      <span className="badge bg-danger bg-opacity-10 text-danger font-monospace mb-1.5 text-wrap w-100" style={{ fontSize: '0.65rem', padding: '6px 4px', wordBreak: 'break-all' }}>
+                                        {disp.gpsLocation || 'No GPS coordinates'}
+                                      </span>
+                                      {(() => {
+                                        const jobObj = jobs.find(j => j._id === disp.jobId);
+                                        const wCoords = parseGpsCoords(disp.gpsLocation);
+                                        if (jobObj && wCoords && jobObj.latitude && jobObj.longitude) {
+                                          const dist = getDistanceInKm(jobObj.latitude, jobObj.longitude, wCoords.lat, wCoords.lng);
+                                          const matches = parseFloat(dist) <= 0.2; // Match if within 200 meters
+                                          return (
+                                            <span className={`badge ${matches ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'} fw-800`} style={{ fontSize: '0.68rem', padding: '4px 8px' }}>
+                                              {matches ? '✅ Near Location' : `⚠️ Distant: ${dist} km`}
+                                            </span>
+                                          );
+                                        }
+                                        return <span className="small text-muted" style={{ fontSize: '0.65rem' }}>No client coords</span>;
+                                      })()}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Map visualization section */}
+                              {(() => {
+                                const jobObj = jobs.find(j => j._id === disp.jobId);
+                                const wCoords = parseGpsCoords(disp.gpsLocation);
+                                if (jobObj && wCoords && jobObj.latitude && jobObj.longitude) {
+                                  return (
+                                    <div className="mt-2 border rounded overflow-hidden shadow-sm" style={{ height: '140px', position: 'relative' }}>
+                                      <iframe
+                                        title={`Dispute Map - ${disp._id}`}
+                                        width="100%"
+                                        height="100%"
+                                        style={{ border: 'none' }}
+                                        src={`https://maps.google.com/maps?saddr=${wCoords.lat},${wCoords.lng}&daddr=${jobObj.latitude},${jobObj.longitude}&output=embed&iwloc=near`}
+                                        allowFullScreen
+                                      ></iframe>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div className="mt-2 border rounded bg-white text-muted d-flex align-items-center justify-content-center small" style={{ height: '140px' }}>
+                                    <i className="bi bi-geo-alt-fill me-1"></i> Map path unavailable (Missing job/GPS coords)
+                                  </div>
+                                );
+                              })()}
+                            </div>
+
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-5 text-muted">
+                  <i className="bi bi-shield-check fs-1 text-success opacity-75 mb-3 d-block"></i>
+                  <h6 className="fw-bold">All clean! No active disputes or escalated complaints.</h6>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 9: SOS ALERTS PANEL */}
+          {activeTab === 'sos' && hasPermission('overview') && (
+            <div>
+              <div className="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+                <div>
+                  <h4 className="fw-bold text-danger mb-1">
+                    <i className="bi bi-exclamation-triangle-fill me-2"></i> Worker SOS Safety Alerts
+                  </h4>
+                  <p className="text-muted small mb-0">Monitor active emergency triggers, locate workers, and verify point refund processing.</p>
+                </div>
+              </div>
+
+              {adminSosAlerts && adminSosAlerts.length > 0 ? (
+                <div className="row g-4">
+                  {adminSosAlerts.map((alert) => (
+                    <div className="col-12 col-md-6" key={alert._id}>
+                      <div className={`card border-0 shadow-sm rounded-4 p-4 h-100 ${
+                        alert.status === 'Pending' 
+                          ? 'border-start border-5 border-danger' 
+                          : alert.status === 'Verified' 
+                          ? 'border-start border-5 border-success' 
+                          : 'border-start border-5 border-secondary'
+                      }`} style={{ background: '#ffffff' }}>
                         <div className="d-flex justify-content-between align-items-start mb-3">
-                          <div>
-                            <span className="badge bg-danger bg-opacity-10 text-danger fw-700 small" style={{ fontSize: '0.7rem' }}>
-                              FILED BY: {disp.submittedBy.toUpperCase()}
-                            </span>
-                            <h6 className="fw-bold text-dark mt-1 mb-0">{disp.jobTitle}</h6>
-                            <span className="small text-muted" style={{ fontSize: '0.75rem' }}>Filed: {disp.createdAt}</span>
-                          </div>
                           <div className="d-flex align-items-center gap-2">
-                            <span className={`badge px-2 py-1 rounded-pill ${disp.status === 'Resolved' ? 'bg-success text-white' : 'bg-warning text-white'
-                              }`}>
-                              {disp.status}
+                            <span className={`badge ${
+                              alert.status === 'Pending' ? 'bg-danger animate-pulse' : alert.status === 'Verified' ? 'bg-success' : 'bg-secondary'
+                            } rounded-pill px-3 py-1.5 fw-bold`}>
+                              {alert.status}
                             </span>
+                            <span className={`badge bg-light text-dark border rounded-pill px-2.5 py-1.5`}>
+                              Refund: {alert.claimRefund ? alert.refundStatus : 'Not Claimed'}
+                            </span>
+                          </div>
+                          <span className="small text-muted font-monospace">{new Date(alert.createdAt).toLocaleString()}</span>
+                        </div>
+
+                        <h5 className="fw-extrabold text-dark mb-3">
+                          🚨 {alert.emergencyType}
+                        </h5>
+
+                        <div className="mb-3 p-3 bg-light rounded-3 text-start small">
+                          <div className="mb-2">
+                            <strong className="text-muted d-block">Worker Details:</strong>
+                            <span className="fw-700 text-dark">{alert.worker?.fullName}</span> ({alert.worker?.phone})
+                          </div>
+                          <div className="mb-2">
+                            <strong className="text-muted d-block">Job Description:</strong>
+                            <span className="fw-700 text-dark">{alert.job?.title}</span> (₹{alert.job?.money})
+                          </div>
+                          <div>
+                            <strong className="text-muted d-block">GPS Coordinates:</strong>
+                            <span className="font-monospace text-danger fw-bold">{alert.latitude}°, {alert.longitude}°</span>
+                          </div>
+                        </div>
+
+                        {alert.status === 'Pending' ? (
+                          <div className="d-flex gap-2 mt-auto pt-3 border-top">
                             <button
-                              className="btn btn-sm btn-outline-danger border-0 rounded-circle"
-                              onClick={() => handleDeleteDispute(disp._id)}
-                              title="Delete Dispute"
+                              onClick={() => handleVerifySosAlert(alert._id, 'Verified')}
+                              className="btn btn-success btn-sm rounded-3 fw-bold flex-fill py-2"
+                              style={{ background: 'linear-gradient(135deg, #198754, #146c43)', border: 'none' }}
                             >
-                              <i className="bi bi-trash-fill"></i>
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mb-3 p-3 bg-light rounded-3 border">
-                          <div className="small text-dark mb-1"><strong>Client:</strong> {disp.clientName}</div>
-                          <div className="small text-dark mb-2"><strong>Worker:</strong> {disp.workerName}</div>
-                          <hr className="my-2 text-muted" />
-                          <div className="small text-muted mb-0"><strong>Escalation Reason:</strong></div>
-                          <div className="small text-dark mt-1 font-monospace" style={{ fontSize: '0.8rem' }}>"{disp.reason}"</div>
-                        </div>
-
-                        <div className="d-flex gap-2 mb-3 flex-wrap">
-                          <div>
-                            <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Selfie Proof</span>
-                            <img src={disp.photo} alt="Selfie" className="rounded border shadow-sm" style={{ width: '60px', height: '60px', objectFit: 'cover', cursor: 'pointer' }} onClick={() => setSelectedDoc({ name: `${disp.submittedBy} Selfie Proof`, type: 'Selfie Photo', file: disp.photo })} />
-                          </div>
-                          <div>
-                            <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Call Log Proof</span>
-                            <img src={disp.callLog} alt="Call Logs" className="rounded border shadow-sm" style={{ width: '60px', height: '60px', objectFit: 'cover', cursor: 'pointer' }} onClick={() => setSelectedDoc({ name: `${disp.submittedBy} Call Log Proof`, type: 'Call Screenshot', file: disp.callLog })} />
-                          </div>
-                          <div>
-                            <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>GPS Coordinates</span>
-                            <span className="badge bg-secondary text-white font-monospace" style={{ fontSize: '0.72rem', padding: '6px' }}>{disp.gpsLocation}</span>
-                          </div>
-                        </div>
-
-                        {disp.status !== 'Resolved' ? (
-                          <div className="mt-auto pt-3 border-top d-flex gap-2">
-                            <button
-                              onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Client (${disp.clientName}). Worker penalized.`)}
-                              className="btn btn-sm btn-outline-primary fw-bold flex-fill rounded-3"
-                            >
-                              Rule in favor of Client
+                              {alert.claimRefund ? '✅ Verify Incident (Refund 50%)' : '✅ Verify Incident (No Refund)'}
                             </button>
                             <button
-                              onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Worker (${disp.workerName}). Compensation confirmed.`)}
-                              className="btn btn-sm btn-outline-success fw-bold flex-fill rounded-3"
+                              onClick={() => handleVerifySosAlert(alert._id, 'Incorrect')}
+                              className="btn btn-outline-danger btn-sm rounded-3 fw-bold flex-fill py-2"
                             >
-                              Rule in favor of Worker
+                              ❌ Reject / Flag Alert
                             </button>
                           </div>
                         ) : (
-                          <div className="mt-auto pt-3 border-top small text-success fw-bold">
-                            Resolved: "{disp.resolutionDecision}"
+                          <div className="mt-auto pt-3 border-top d-flex align-items-center justify-content-between text-muted small">
+                            <span>Status Updated by Admin</span>
+                            {alert.status === 'Verified' && (
+                              <strong className="text-success">
+                                <i className="bi bi-check-circle-fill me-1"></i>
+                                {alert.claimRefund ? `Refunded ${alert.refundAmount} Tokens` : 'Verified (No Refund Claimed)'}
+                              </strong>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1614,8 +1873,8 @@ const AdminDashboard = () => {
                 </div>
               ) : (
                 <div className="text-center py-5 text-muted">
-                  <i className="bi bi-shield-check fs-1 text-success opacity-75 mb-3 d-block"></i>
-                  <h6 className="fw-bold">All clean! No active disputes or escalated complaints.</h6>
+                  <i className="bi bi-shield-check-fill text-success fs-1 mb-3 d-block"></i>
+                  <h6 className="fw-bold">No emergency SOS triggers logged. The platform is completely safe!</h6>
                 </div>
               )}
             </div>
@@ -1699,8 +1958,7 @@ const AdminDashboard = () => {
                     <input
                       type="text"
                       className="form-control rounded-start-3 bg-light border-1 fw-bold"
-                      readOnly
-                      value={selectedCredentials.email}
+                      readOnly                      value={selectedCredentials.email}
                       style={{ fontSize: '0.9rem' }}
                     />
                     <button

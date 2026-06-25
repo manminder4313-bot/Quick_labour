@@ -15,6 +15,72 @@ const INDUSTRY_ICONS = {
   "Mining & Heavy Work":         "bi-hammer",
 };
 
+// Map each specialty name to a background image related to that occupation
+const OCCUPATION_IMAGES = {
+  // Construction Labour
+  "Construction Labour": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=350&q=80",
+  "Mason": "https://www.shutterstock.com/image-photo/happy-indian-male-construction-worker-260nw-2317221223.jpg",
+  "Carpenter": "https://usihome.com/wp-content/uploads/2022/02/charpentier-de-bois-1.jpeg",
+  "Electrician": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=350&q=80",
+  "Plumber": "https://www.steadyfloplumbing.com/wp-content/uploads/2023/10/plumbing-services-1920w.jpg",
+  "Welder": "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=350&q=80",
+  "Painter": "https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=350&q=80",
+  "Tile worker": "https://static.vecteezy.com/system/resources/thumbnails/074/236/707/small/tile-installation-professional-contractor-installing-floor-tiles-with-spacers-and-cement-trowel-photo.jpg",
+  "Steel fixer": "https://zmv-assets.holzweg.tv//Anwenderbilder/Anwender_113301-2.jpg",
+  "Concrete worker": "https://images.squarespace-cdn.com/content/v1/5f4f9895e09c563a9267f110/ab3e3c6e-7850-4fbc-ac34-39f4fb46e01c/iStock-1362538391.jpg",
+  "Scaffolder": "https://i0.wp.com/sigmahealth.co.uk/wp-content/uploads/2024/06/Fit-to-work-banner-1.png?fit=500%2C500&ssl=1",
+
+  // Factory / Industrial Labour
+  "Machine operator": "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=350&q=80",
+  "Assembly line worker": "https://images.unsplash.com/photo-1563986768609-322da13575f3?w=350&q=80",
+  "Packaging worker": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=350&q=80",
+  "Warehouse loader": "https://images.unsplash.com/photo-1587293852726-70cdb56c2866?w=350&q=80",
+  "Forklift operator": "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=350&q=80",
+  "Quality checker": "https://images.unsplash.com/photo-1581092921461-eab62e97a780?w=350&q=80",
+
+  // Agricultural Labour
+  "Farmer helper": "https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?w=350&q=80",
+  "Harvester": "https://mahindrafarmmachinery.com/sites/default/files/2024-12/8.%20Combine%20Harvester%20Working%2C%20Uses%2C%20and%20Importance-min%20%281%29_0.jpg",
+  "Dairy worker": "https://www.shutterstock.com/image-photo/woman-pouring-fresh-milk-into-260nw-2767933909.jpg",
+  "Irrigation worker": "https://d3n8a8pro7vhmx.cloudfront.net/seedyourfuture/pages/239/attachments/original/1547063101/IrrigationMainEdited.jpg?1547063101",
+  "Tractor operator": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQZ5ovh1ATW9UGNko__iNyHpSgZ7dWbH7jkBjcP5UoXGaUaVL51Vi8cBns&s=10",
+
+  // Transport & Delivery
+  "Truck helper": "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=350&q=80",
+  "Delivery worker": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSKUfvi-hIpA8XFttf3AUAQ0i6QR3amjieMuq_BYeKyN-6V9iXXsfxzT23s&s=10",
+  "Driver": "https://lscdn.blob.core.windows.net/biz-live/photos-12272115-17640528706143953.jpeg",
+  "Loader/unloader": "https://vrslogistics.com/wp-content/uploads/2021/01/loading-unloading-services-visakhapatnam-600x400-1.jpg",
+
+  // Cleaning & Maintenance
+  "Sweeper": "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=350&q=80",
+  "Housekeeping staff": "https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?w=350&q=80",
+  "Garbage collector": "https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=350&q=80",
+  "Maintenance worker": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=350&q=80",
+
+  // Domestic Labour
+  "Cook": "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=350&q=80",
+  "Maid": "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=350&q=80",
+  "Caretaker": "https://images.unsplash.com/photo-1576765608535-5f04d1e3f289?w=350&q=80",
+  "Babysitter": "https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?w=350&q=80",
+
+  // Skilled Technical Labour
+  "HVAC technician": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=350&q=80",
+  "Mechanic": "https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=350&q=80",
+  "Mobile repair technician": "https://images.unsplash.com/photo-1512499617640-c74ae3a79d37?w=350&q=80",
+  "AC repair worker": "https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=350&q=80",
+
+  // Daily Wage / General Labour
+  "Helper": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=350&q=80",
+  "Road worker": "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=350&q=80",
+  "Excavation worker": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=350&q=80",
+  "Security guard": "https://images.unsplash.com/photo-1563986768609-322da13575f3?w=350&q=80",
+
+  // Mining & Heavy Work
+  "Miner": "https://images.unsplash.com/photo-1518152006812-edab29b069ac?w=350&q=80",
+  "Drilling worker": "https://images.unsplash.com/photo-1518152006812-edab29b069ac?w=350&q=80",
+  "Crane operator": "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=350&q=80"
+};
+
 const Categories = () => {
   const navigate = useNavigate();
   const userRole = sessionStorage.getItem('userRole');
@@ -154,58 +220,58 @@ const Categories = () => {
 
                 {/* Worker Cards — uses existing .category-box CSS classes */}
                 <div className="row g-4">
-                  {filteredSpecs.map((spec) => (
-                    <div key={spec.name} className="col-md-4 col-lg-3">
-                      <div className="category-box">
+                  {filteredSpecs.map((spec) => {
+                    const bgImage = OCCUPATION_IMAGES[spec.name] || 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=350&q=80';
+                    return (
+                      <div key={spec.name} className="col-md-4 col-lg-3">
+                        <div className="category-card-new">
+                          {/* Top Image Banner */}
+                          <div className="card-image-wrapper">
+                            <img src={bgImage} alt={spec.name} className="card-banner-img" />
+                            {/* Overlapping Icon Badge */}
+                            <div className="card-icon-badge">
+                              <i className={`bi ${INDUSTRY_ICONS[industryName] || 'bi-person-gear'}`}></i>
+                            </div>
+                          </div>
 
-                        {/* Icon */}
-                        <div className="category-icon">
-                          <i className={`bi ${INDUSTRY_ICONS[industryName] || 'bi-person-gear'}`}></i>
+                          {/* Card Content Area */}
+                          <div className="card-content-wrapper">
+                            <div>
+                              <h5>{spec.name}</h5>
+                              <p>{spec.desc}</p>
+                            </div>
+
+                            <div>
+                              {/* Rate & Visit charge pills */}
+                              <div className="d-flex flex-wrap gap-2 mb-2">
+                                <span className="rate-pill">
+                                  ₹{spec.baseRate}/day
+                                </span>
+                                <span className="visit-pill">
+                                  <i className="bi bi-geo-alt me-1"></i>Visit ₹{spec.visitCharge}
+                                </span>
+                              </div>
+
+                              {/* Action Button */}
+                              {userRole === 'worker' ? (
+                                <button className="btn-hire-new" disabled>
+                                  Hiring Restricted
+                                </button>
+                              ) : (
+                                <button 
+                                  className="btn-hire-new active" 
+                                  onClick={() => handleHire(spec.name)}
+                                >
+                                  Hire {spec.name}
+                                </button>
+                              )}
+                            </div>
+
+                          </div>
                         </div>
-
-                        {/* Name */}
-                        <h5>{spec.name}</h5>
-
-                        {/* Description */}
-                        <p>{spec.desc}</p>
-
-                        {/* Skill Tags — rate & visit charge */}
-                        <div className="mb-3">
-                          <span className="skill-tag">
-                            <i className="bi bi-currency-rupee"></i>{spec.baseRate}/day
-                          </span>
-                          <span className="skill-tag">
-                            <i className="bi bi-geo-alt me-1"></i>Visit ₹{spec.visitCharge}
-                          </span>
-                        </div>
-
-                        {/* Hire Button */}
-                        {userRole === 'worker' ? (
-                          <button
-                            className="btn-category"
-                            disabled
-                            style={{
-                              background: '#cbd5e1',
-                              borderColor: '#cbd5e1',
-                              color: '#64748b',
-                              cursor: 'not-allowed',
-                              boxShadow: 'none'
-                            }}
-                          >
-                            Hiring Restricted
-                          </button>
-                        ) : (
-                          <button
-                            className="btn-category"
-                            onClick={() => handleHire(spec.name)}
-                          >
-                            Hire {spec.name}
-                          </button>
-                        )}
-
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
               </div>

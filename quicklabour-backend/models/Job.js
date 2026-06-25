@@ -80,6 +80,26 @@ const jobSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    travelTimeoutPenalized: {
+      type: Boolean,
+      default: false,
+    },
+    subStatus: {
+      type: String,
+      default: 'Accepted',
+    },
+    trackingActive: {
+      type: Boolean,
+      default: false,
+    },
+    workerLat: {
+      type: Number,
+      default: null,
+    },
+    workerLng: {
+      type: Number,
+      default: null,
+    },
   },
   {
     timestamps: true,

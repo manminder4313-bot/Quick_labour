@@ -1,13 +1,26 @@
 import express from 'express';
 import Job from '../models/Job.js';
-import User from '../models/User.js';
+import User, { Labour } from '../models/User.js';
 import { protect } from '../middleware/authMiddleware.js';
 import Message from '../models/Message.js';
 import Review from '../models/Review.js';
+import SosAlert from '../models/SosAlert.js';
+import Dispute from '../models/Dispute.js';
 
 const router = express.Router();
 
-const getDeductionPoints = (money) => {
+let stateVersion = 1;
+Object.defineProperty(global, 'stateVersion', {
+  get() { return stateVersion; },
+  set(val) { stateVersion = val; },
+  configurable: true
+});
+
+router.get('/state-version', (req, res) => {
+  res.json({ version: stateVersion });
+});
+
+const getDeductionTokens = (money) => {
   const cleanStr = String(money || '').replace(/[^\d.]/g, '');
   const val = parseFloat(cleanStr) || 0;
   if (val <= 500) return 10;
@@ -72,16 +85,16 @@ router.post('/', protect, async (req, res) => {
       // Increment hired worker's job count
       const worker = await User.findById(workerId);
       if (worker) {
-        const pointsCost = getDeductionPoints(job.money);
-        if ((worker.points || 0) < pointsCost) {
+        const tokensCost = getDeductionTokens(job.money);
+        if ((worker.tokens || 0) < tokensCost) {
           return res.status(403).json({
-            message: 'INSUFFICIENT_POINTS',
-            error: `The selected worker does not have enough subscription points to accept this job. This job requires ${pointsCost} points, but they only have ${worker.points || 0} points.`
+            message: 'INSUFFICIENT_TOKENS',
+            error: `The selected worker does not have enough subscription tokens to accept this job. This job requires ${tokensCost} tokens, but they only have ${worker.tokens || 0} tokens.`
           });
         }
         worker.jobsCompleted = (worker.jobsCompleted || 0) + 1;
         worker.acceptedJobsCount = (worker.acceptedJobsCount || 0) + 1;
-        worker.points = (worker.points || 0) - pointsCost;
+        worker.tokens = (worker.tokens || 0) - tokensCost;
         await worker.save();
       }
     } else if (invitedWorkers && invitedWorkers.length > 0) {
@@ -153,6 +166,7 @@ router.post('/', protect, async (req, res) => {
       }
     }
 
+    stateVersion++;
     res.status(201).json(createdJob);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -167,30 +181,34 @@ router.get('/', protect, async (req, res) => {
     if (req.user.role === 'client') {
       // Clients see jobs they posted, populated with bidders' details
       const jobs = await Job.find({ client: req.user._id })
-        .populate('hiredWorker', 'fullName occupation avatar rating phone address')
-        .populate('bidders.worker', 'fullName occupation avatar rating phone address jobsCompleted');
+        .populate('hiredWorker', 'fullName occupation rating phone address')
+        .populate('bidders.worker', 'fullName occupation rating phone address jobsCompleted');
       res.json(jobs);
     } else if (req.user.role === 'worker') {
       // Workers see jobs matching their specialty, or jobs they are hired for
       // First, get jobs they are explicitly hired for
       const hiredJobs = await Job.find({ hiredWorker: req.user._id })
-        .populate('client', 'fullName email phone address avatar');
+        .populate('client', 'fullName email phone address');
 
       // Second, get "Waiting..." jobs that match their occupation (or all jobs if no specific matches)
       let keyword = req.user.occupation ? req.user.occupation.split(' ')[0] : '';
       
-      // Normalize keywords to match job categories (e.g. Electrician -> Electric)
+      // Normalize keywords to match flexibly (e.g. Electrician -> elect, Plumber -> plumb, Painter -> paint)
       if (keyword.toLowerCase().startsWith('elect')) {
-        keyword = 'Electric';
+        keyword = 'elect';
       } else if (keyword.toLowerCase().startsWith('plumb')) {
-        keyword = 'Plumbing';
+        keyword = 'plumb';
       } else if (keyword.toLowerCase().startsWith('paint')) {
-        keyword = 'Painting';
+        keyword = 'paint';
+      } else if (keyword.toLowerCase().startsWith('carp')) {
+        keyword = 'carp';
       } else if (keyword.toLowerCase().startsWith('clean')) {
-        keyword = 'Cleaning';
+        keyword = 'clean';
+      } else if (keyword.toLowerCase().startsWith('const')) {
+        keyword = 'const';
       }
 
-      let query = { status: 'Waiting...', money: { $lte: 500 } };
+      let query = { status: 'Waiting...' };
       
       // Look for jobs matching worker category
       if (keyword) {
@@ -198,7 +216,7 @@ router.get('/', protect, async (req, res) => {
       }
 
       const availableJobs = await Job.find(query)
-        .populate('client', 'fullName email phone address avatar');
+        .populate('client', 'fullName email phone address');
 
       // Map jobs to calculate GPS distance and format readable text
       const availableJobsWithDistance = availableJobs.map((job, idx) => {
@@ -263,19 +281,20 @@ router.put('/:id/hire', protect, async (req, res) => {
     // Increment hired worker's job count
     const worker = await User.findById(workerId);
     if (worker) {
-      const pointsCost = getDeductionPoints(job.money);
-      if ((worker.points || 0) < pointsCost) {
+      const tokensCost = getDeductionTokens(job.money);
+      if ((worker.tokens || 0) < tokensCost) {
         return res.status(403).json({
-          message: 'INSUFFICIENT_POINTS',
-          error: `The selected worker does not have enough subscription points to accept this job. This job requires ${pointsCost} points, but they only have ${worker.points || 0} points.`
+          message: 'INSUFFICIENT_TOKENS',
+          error: `The selected worker does not have enough subscription tokens to accept this job. This job requires ${tokensCost} tokens, but they only have ${worker.tokens || 0} tokens.`
         });
       }
       worker.jobsCompleted = (worker.jobsCompleted || 0) + 1;
       worker.acceptedJobsCount = (worker.acceptedJobsCount || 0) + 1;
-      worker.points = (worker.points || 0) - pointsCost;
+      worker.tokens = (worker.tokens || 0) - tokensCost;
       await worker.save();
     }
 
+    stateVersion++;
     res.json(updatedJob);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -304,6 +323,7 @@ router.put('/:id/decline-bid', protect, async (req, res) => {
 
     job.bidders = job.bidders.filter(b => b.worker.toString() !== bidderId);
     const updatedJob = await job.save();
+    stateVersion++;
     res.json(updatedJob);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -336,16 +356,16 @@ router.put('/:id/status', protect, async (req, res) => {
           return res.status(404).json({ message: 'Worker profile not found' });
         }
 
-        const pointsCost = getDeductionPoints(job.money);
+        const tokensCost = getDeductionTokens(job.money);
 
-        if ((worker.points || 0) < pointsCost) {
+        if ((worker.tokens || 0) < tokensCost) {
           return res.status(403).json({
-            message: 'INSUFFICIENT_POINTS',
-            error: `This job requires ${pointsCost} points, but you only have ${worker.points || 0} points. Please purchase a subscription to accept more jobs.`
+            message: 'INSUFFICIENT_TOKENS',
+            error: `This job requires ${tokensCost} tokens, but you only have ${worker.tokens || 0} tokens. Please purchase a subscription to accept more jobs.`
           });
         }
-        // Deduct points
-        worker.points = (worker.points || 0) - pointsCost;
+        // Deduct tokens
+        worker.tokens = (worker.tokens || 0) - tokensCost;
 
         // Increment accepted jobs count
         worker.acceptedJobsCount = (worker.acceptedJobsCount || 0) + 1;
@@ -443,6 +463,7 @@ router.put('/:id/status', protect, async (req, res) => {
       }
     }
 
+    stateVersion++;
     res.json(updatedJob);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -538,6 +559,7 @@ router.put('/:id/complete', protect, async (req, res) => {
       });
     }
 
+    stateVersion++;
     res.json({ message: 'Job completed and worker rating updated successfully!', job });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -560,12 +582,12 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(401).json({ message: 'Not authorized to delete this job' });
     }
 
-    // Refund points to worker if a worker was hired and job was not completed yet
+    // Refund tokens to worker if a worker was hired and job was not completed yet
     if (job.hiredWorker && job.status !== 'Completed') {
       const worker = await User.findById(job.hiredWorker);
       if (worker) {
-        const pointsCost = getDeductionPoints(job.money);
-        worker.points = (worker.points || 0) + pointsCost;
+        const tokensCost = getDeductionTokens(job.money);
+        worker.tokens = (worker.tokens || 0) + tokensCost;
         if (worker.acceptedJobsCount > 0) {
           worker.acceptedJobsCount -= 1;
         }
@@ -590,7 +612,301 @@ router.delete('/:id', protect, async (req, res) => {
 
     await Job.findByIdAndDelete(req.params.id);
 
+    stateVersion++;
     res.json({ message: 'Job deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Get logged in worker's SOS alerts
+// @route   GET /api/jobs/my-sos
+// @access  Private (Worker only)
+router.get('/my-sos', protect, async (req, res) => {
+  if (req.user.role !== 'worker') {
+    return res.status(403).json({ message: 'Only workers can access their SOS alerts.' });
+  }
+  try {
+    const alerts = await SosAlert.find({ worker: req.user._id })
+      .populate('job', 'title money')
+      .sort({ createdAt: -1 });
+    res.json(alerts);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Trigger SOS alert and transfer job to another worker of same occupation
+// @route   POST /api/jobs/:id/sos
+// @access  Private (Worker only)
+router.post('/:id/sos', protect, async (req, res) => {
+  if (req.user.role !== 'worker') {
+    return res.status(403).json({ message: 'Only workers can trigger SOS safety alerts.' });
+  }
+  const { emergencyType, latitude, longitude, claimRefund } = req.body;
+  if (!emergencyType) {
+    return res.status(400).json({ message: 'Please specify the type of problem or emergency.' });
+  }
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    if (job.status !== 'Accepted' || !job.hiredWorker || job.hiredWorker.toString() !== req.user._id.toString()) {
+      return res.status(400).json({ message: 'You can only trigger SOS for an active, accepted job.' });
+    }
+
+    const tokensCost = getDeductionTokens(job.money);
+    const refundAmount = Math.round(tokensCost * 0.5);
+
+    // 1. Create the SosAlert
+    const sosAlert = new SosAlert({
+      worker: req.user._id,
+      job: job._id,
+      emergencyType,
+      latitude: latitude || req.user.latitude,
+      longitude: longitude || req.user.longitude,
+      status: 'Pending',
+      refundStatus: 'Pending',
+      refundAmount,
+      claimRefund: claimRefund === true || claimRefund === 'true',
+    });
+    await sosAlert.save();
+
+    // 2. Transfer job to another worker of the same occupation
+    const originalWorkerOccupation = req.user.occupation || '';
+    
+    // Find another worker with same occupation, online, and not the current worker
+    const candidateWorker = await Labour.findOne({
+      role: 'worker',
+      occupation: originalWorkerOccupation,
+      _id: { $ne: req.user._id },
+      isOnline: true,
+    });
+
+    let transferred = false;
+    let newWorkerName = null;
+
+    if (candidateWorker) {
+      // Reassign job to candidateWorker
+      job.hiredWorker = candidateWorker._id;
+      job.status = 'Accepted'; // keep accepted for the new worker
+      
+      // Deduct tokens from candidateWorker
+      const newWorkerTokensCost = getDeductionTokens(job.money);
+      candidateWorker.tokens = Math.max(0, (candidateWorker.tokens || 0) - newWorkerTokensCost);
+      candidateWorker.acceptedJobsCount = (candidateWorker.acceptedJobsCount || 0) + 1;
+      candidateWorker.jobsCompleted = (candidateWorker.jobsCompleted || 0) + 1;
+      await candidateWorker.save();
+
+      transferred = true;
+      newWorkerName = candidateWorker.fullName;
+
+      // Exchange messages for details of the new hire
+      try {
+        const clientUser = await User.findById(job.client);
+        if (clientUser) {
+          const workerText = `[AUTOMATED SOS REASSIGNMENT] Hello! I have been reassigned to your request for "${job.repair}" due to an emergency with the previous worker. Here are my contact details:\n\n👷 Worker Name: ${candidateWorker.fullName}\n📞 Phone Number: ${candidateWorker.phone}\n🛠️ Specialty: ${candidateWorker.occupation || 'Trade Worker'}\n⭐ Rating: ${candidateWorker.rating || '4.9'} / 5.0\n\nI am on my way to your location!`;
+          await Message.create({
+            senderId: candidateWorker._id.toString(),
+            senderName: candidateWorker.fullName,
+            senderRole: 'worker',
+            senderAvatar: candidateWorker.avatar || '',
+            receiverId: clientUser._id.toString(),
+            receiverName: clientUser.fullName,
+            text: workerText,
+          });
+        }
+      } catch (msgErr) {
+        console.error('Error sending reassignment message:', msgErr);
+      }
+    } else {
+      // No other worker found with same occupation, release job back to pool
+      job.hiredWorker = null;
+      job.status = 'Waiting...';
+    }
+
+    await job.save();
+    stateVersion++;
+
+    res.status(201).json({
+      message: 'SOS emergency safety alert triggered successfully.',
+      transferred,
+      newWorkerName,
+      sosAlert
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Apply worker conduct policy penalty when travel timer expires
+// @route   POST /api/jobs/:id/travel-timeout
+// @access  Private (Worker only)
+router.post('/:id/travel-timeout', protect, async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    if (!job.hiredWorker || job.hiredWorker.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized: You are not the hired worker for this job.' });
+    }
+
+    if (job.travelTimeoutPenalized) {
+      return res.json({ message: 'Worker already penalized for this job.', penalized: true });
+    }
+
+    // Bypass penalty if worker has an active/pending/verified SOS alert for this job
+    const sosAlert = await SosAlert.findOne({ job: job._id, worker: req.user._id });
+    if (sosAlert) {
+      if (sosAlert.status === 'Pending' || sosAlert.status === 'Verified') {
+        return res.json({ message: 'SOS safety alert triggered. Policy penalty bypassed.', bypassed: true });
+      }
+    }
+
+    // Apply policy penalty
+    job.travelTimeoutPenalized = true;
+    await job.save();
+
+    const worker = await Labour.findById(req.user._id);
+    if (worker) {
+      worker.policyViolations = (worker.policyViolations || 0) + 1;
+      let penaltyResult = '';
+
+      if (worker.policyViolations === 1) {
+        worker.warnings.push(`Warning 1: Failed to start travel within 15 minutes for job "${job.title}".`);
+        penaltyResult = 'warning';
+      } else if (worker.policyViolations === 2) {
+        worker.walletBalance = Math.max(0, (worker.walletBalance || 0) - 50);
+        worker.warnings.push(`Violation 2: Failed to start travel within 15 minutes for job "${job.title}". ₹50 penalty deducted from wallet.`);
+        penaltyResult = 'fine';
+      } else if (worker.policyViolations >= 3) {
+        worker.isSuspended = true;
+        worker.suspendedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        worker.warnings.push(`Violation 3: Failed to start travel within 15 minutes for job "${job.title}". Account suspended for 7 days.`);
+        penaltyResult = 'suspended';
+      }
+
+      await worker.save();
+      stateVersion++;
+
+      return res.json({
+        message: `Worker Conduct Policy applied. Policy violation count: ${worker.policyViolations}`,
+        penaltyResult,
+        policyViolations: worker.policyViolations,
+        warnings: worker.warnings,
+        isSuspended: worker.isSuspended,
+        suspendedUntil: worker.suspendedUntil
+      });
+    }
+
+    res.status(404).json({ message: 'Worker profile not found' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Submit a dispute
+// @route   POST /api/jobs/disputes
+// @access  Private (Client/Worker)
+router.post('/disputes', protect, async (req, res) => {
+  const { jobId, jobTitle, clientName, workerName, submittedBy, reason, photo, callLog, gpsLocation } = req.body;
+
+  if (!jobId || !reason) {
+    return res.status(400).json({ message: 'Missing required fields: jobId, reason' });
+  }
+
+  try {
+    const dispute = new Dispute({
+      jobId,
+      jobTitle,
+      clientName,
+      workerName,
+      submittedBy,
+      reason,
+      photo,
+      callLog,
+      gpsLocation,
+      status: 'Pending',
+    });
+
+    await dispute.save();
+
+    stateVersion++;
+    res.status(201).json(dispute);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Get user's disputes
+// @route   GET /api/jobs/disputes
+// @access  Private (Client/Worker)
+router.get('/disputes', protect, async (req, res) => {
+  try {
+    // Return disputes where user matches clientName or workerName
+    const query = {
+      $or: [
+        { clientName: req.user.fullName },
+        { workerName: req.user.fullName }
+      ]
+    };
+
+    const disputes = await Dispute.find(query).sort({ createdAt: -1 });
+    res.json(disputes);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Update worker tracking location and subStatus for accepted jobs
+// @route   PUT /api/jobs/:id/track
+// @access  Private (Worker only)
+router.put('/:id/track', protect, async (req, res) => {
+  const { latitude, longitude, subStatus } = req.body;
+
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    // Verify authorized worker
+    if (!job.hiredWorker || job.hiredWorker.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized: You are not hired for this job' });
+    }
+
+    if (latitude !== undefined && latitude !== null) {
+      job.workerLat = Number(latitude);
+    }
+    if (longitude !== undefined && longitude !== null) {
+      job.workerLng = Number(longitude);
+    }
+    if (subStatus) {
+      job.subStatus = subStatus;
+      if (subStatus === 'On the Way') {
+        job.trackingActive = true;
+      } else if (subStatus === 'Arrived' || job.status === 'Completed') {
+        job.trackingActive = false;
+      }
+    }
+
+    await job.save();
+    stateVersion++;
+
+    res.json({
+      message: 'Tracking details updated successfully',
+      job: {
+        _id: job._id,
+        status: job.status,
+        subStatus: job.subStatus,
+        trackingActive: job.trackingActive,
+        workerLat: job.workerLat,
+        workerLng: job.workerLng
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

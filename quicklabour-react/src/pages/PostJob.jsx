@@ -358,7 +358,7 @@ const PostJob = () => {
               <div className="p-4 rounded-16 text-start mb-4" style={{ borderLeft: '4px solid #dc3545', background: '#fdf2f2' }}>
                 <span className="fw-700 text-danger d-block mb-1" style={{ fontSize: '0.88rem' }}>🔒 Role Restriction Notice</span>
                 <span className="text-muted small d-block" style={{ lineHeight: '1.4' }}>
-                  QuickLabour uses role-segregated profiles to protect user data and ensure worker points, ratings, and dashboard features function with the highest security and performance.
+                  QuickLabour uses role-segregated profiles to protect user data and ensure worker tokens, ratings, and dashboard features function with the highest security and performance.
                 </span>
               </div>
               <button 

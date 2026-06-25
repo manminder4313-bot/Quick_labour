@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 
+const getAvatarUrl = (avatar, name) => {
+  if (!avatar || avatar.includes('images.unsplash.com')) {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=0d6efd&color=fff&size=150`;
+  }
+  return avatar;
+};
+
 const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -71,7 +78,7 @@ const Navbar = () => {
                   style={{ cursor: 'pointer' }}
                 >
                   <img 
-                    src={user.avatar || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80'} 
+                    src={getAvatarUrl(user.avatar, user.name)} 
                     alt={user.name} 
                     className="rounded-circle border border-warning border-2" 
                     style={{ width: '38px', height: '38px', objectFit: 'cover' }} 

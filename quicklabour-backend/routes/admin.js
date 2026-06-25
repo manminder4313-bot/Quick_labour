@@ -6,6 +6,8 @@ import Admin from '../models/Admin.js';
 import Job from '../models/Job.js';
 import Contact from '../models/Contact.js';
 import Review from '../models/Review.js';
+import SosAlert from '../models/SosAlert.js';
+import Dispute from '../models/Dispute.js';
 
 const router = express.Router();
 
@@ -308,6 +310,209 @@ router.put('/reset-password', protect, adminCheck, async (req, res) => {
     await user.save();
 
     res.json({ message: `Password for ${user.fullName} updated securely!` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Get all SOS emergency alerts
+// @route   GET /api/admin/sos
+// @access  Private (Admin only)
+router.get('/sos', protect, adminCheck, async (req, res) => {
+  try {
+    const alerts = await SosAlert.find({})
+      .populate('worker', 'fullName phone occupation tokens')
+      .populate({
+        path: 'job',
+        select: 'title money client',
+        populate: {
+          path: 'client',
+          select: 'fullName phone'
+        }
+      })
+      .sort({ createdAt: -1 });
+    res.json(alerts);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Verify and resolve SOS alert
+// @route   POST /api/admin/sos/:id/verify
+// @access  Private (Admin only)
+router.post('/sos/:id/verify', protect, adminCheck, async (req, res) => {
+  const { status } = req.body;
+  if (!['Verified', 'Incorrect'].includes(status)) {
+    return res.status(400).json({ message: 'Invalid status. Must be "Verified" or "Incorrect"' });
+  }
+
+  try {
+    const alert = await SosAlert.findById(req.params.id);
+    if (!alert) {
+      return res.status(404).json({ message: 'SOS alert not found' });
+    }
+
+    if (alert.status !== 'Pending') {
+      return res.status(400).json({ message: 'This SOS alert has already been resolved.' });
+    }
+
+    alert.status = status;
+    if (status === 'Verified') {
+      alert.refundStatus = 'Refunded';
+      // Credit tokens to the worker if they claimed refund
+      if (alert.claimRefund) {
+        const worker = await Labour.findById(alert.worker);
+        if (worker) {
+          worker.tokens = (worker.tokens || 0) + alert.refundAmount;
+          await worker.save();
+        }
+      }
+    } else {
+      alert.refundStatus = 'No Refund';
+      // Apply Worker Conduct Policy penalty since the SOS claim was false/incorrect
+      const worker = await Labour.findById(alert.worker);
+      if (worker) {
+        const job = await Job.findById(alert.job);
+        if (job && !job.travelTimeoutPenalized) {
+          job.travelTimeoutPenalized = true;
+          await job.save();
+
+          worker.policyViolations = (worker.policyViolations || 0) + 1;
+          if (worker.policyViolations === 1) {
+            worker.warnings.push(`Warning 1: SOS alert flagged as Incorrect for job "${job.title}". Travel confirmation policy violation.`);
+          } else if (worker.policyViolations === 2) {
+            worker.walletBalance = Math.max(0, (worker.walletBalance || 0) - 50);
+            worker.warnings.push(`Violation 2: SOS alert flagged as Incorrect for job "${job.title}". ₹50 penalty deducted from wallet.`);
+          } else if (worker.policyViolations >= 3) {
+            worker.isSuspended = true;
+            worker.suspendedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+            worker.warnings.push(`Violation 3: SOS alert flagged as Incorrect for job "${job.title}". Account suspended for 7 days.`);
+          }
+          await worker.save();
+        }
+      }
+    }
+
+    await alert.save();
+    res.json({ message: `SOS emergency alert resolved as ${status}`, alert });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Get all disputes
+// @route   GET /api/admin/disputes
+// @access  Private (Admin only)
+router.get('/disputes', protect, adminCheck, async (req, res) => {
+  try {
+    const disputes = await Dispute.find({}).sort({ createdAt: -1 });
+    res.json(disputes);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Resolve a dispute
+// @route   POST /api/admin/disputes/:id/resolve
+// @access  Private (Admin only)
+router.post('/disputes/:id/resolve', protect, adminCheck, async (req, res) => {
+  const { decision } = req.body;
+  if (!decision) {
+    return res.status(400).json({ message: 'Missing resolution decision' });
+  }
+
+  try {
+    const dispute = await Dispute.findById(req.params.id);
+    if (!dispute) {
+      return res.status(404).json({ message: 'Dispute not found' });
+    }
+
+    const decisionLower = decision.toLowerCase();
+    
+    // 1. Visit compensation approved for client no-show
+    if (decisionLower.includes('visit compensation of ₹50 paid to worker')) {
+      const job = await Job.findById(dispute.jobId);
+      if (job) {
+        // Find worker and client
+        const worker = await Labour.findById(job.hiredWorker);
+        const client = await Client.findById(job.client);
+        
+        if (worker) {
+          worker.walletBalance = (worker.walletBalance || 0) + 50;
+          await worker.save();
+        }
+        if (client) {
+          client.walletBalance = Math.max(0, (client.walletBalance || 0) - 50);
+          await client.save();
+        }
+        
+        job.status = 'Rejected'; // Mark as rejected/cancelled due to no-show
+        await job.save();
+      }
+    }
+    // 2. Resolved in favor of Client (Worker penalized)
+    else if (decisionLower.includes('resolved in favor of client') || decisionLower.includes('worker penalized')) {
+      const job = await Job.findById(dispute.jobId);
+      if (job) {
+        const worker = await Labour.findById(job.hiredWorker);
+        if (worker) {
+          // Penalize worker ₹50
+          worker.walletBalance = Math.max(0, (worker.walletBalance || 0) - 50);
+          worker.policyViolations = (worker.policyViolations || 0) + 1;
+          await worker.save();
+        }
+        
+        job.status = 'Rejected';
+        await job.save();
+      }
+    }
+    // 3. Resolved in favor of Worker (Compensation confirmed)
+    else if (decisionLower.includes('resolved in favor of worker') || decisionLower.includes('compensation confirmed')) {
+      const job = await Job.findById(dispute.jobId);
+      if (job) {
+        const worker = await Labour.findById(job.hiredWorker);
+        const client = await Client.findById(job.client);
+        const jobWage = job.money || 0;
+        
+        if (worker) {
+          worker.walletBalance = (worker.walletBalance || 0) + jobWage;
+          await worker.save();
+        }
+        if (client) {
+          client.walletBalance = Math.max(0, (client.walletBalance || 0) - jobWage);
+          await client.save();
+        }
+        
+        job.status = 'Completed';
+        await job.save();
+      }
+    }
+
+    dispute.status = 'Resolved';
+    dispute.resolutionDecision = decision;
+    await dispute.save();
+
+    // Increment global stateVersion to notify all dashboards to refetch
+    global.stateVersion = (global.stateVersion || 0) + 1;
+
+    res.json({ message: 'Dispute successfully resolved', dispute });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Delete a dispute
+// @route   DELETE /api/admin/disputes/:id
+// @access  Private (Admin only)
+router.delete('/disputes/:id', protect, adminCheck, async (req, res) => {
+  try {
+    const dispute = await Dispute.findById(req.params.id);
+    if (!dispute) {
+      return res.status(404).json({ message: 'Dispute not found' });
+    }
+
+    await dispute.deleteOne();
+    res.json({ message: 'Dispute record successfully deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

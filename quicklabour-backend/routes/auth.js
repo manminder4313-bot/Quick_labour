@@ -1,6 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Admin from '../models/Admin.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -61,7 +62,7 @@ router.post('/register', async (req, res) => {
       isOnline: true,
       skills: role === 'worker' ? [occupation] : [],
       walletBalance: role === 'worker' ? 0 : 500,
-      points: role === 'worker' ? 20 : 0,
+      tokens: role === 'worker' ? 20 : 0,
     });
 
     if (user) {
@@ -79,7 +80,7 @@ router.post('/register', async (req, res) => {
         isOnline: user.isOnline,
         rating: user.rating,
         acceptedJobsCount: user.acceptedJobsCount,
-        points: user.points,
+        tokens: user.tokens,
         walletBalance: user.walletBalance !== undefined ? user.walletBalance : 0,
         token: generateToken(user._id),
         permissions: user.role === 'admin' 
@@ -122,6 +123,19 @@ router.post('/login', async (req, res) => {
     }
 
     if (user && (await user.matchPassword(password))) {
+      if (user.role === 'worker' && user.isSuspended) {
+        if (user.suspendedUntil && new Date() < new Date(user.suspendedUntil)) {
+          const formattedDate = new Date(user.suspendedUntil).toLocaleDateString();
+          return res.status(403).json({
+            message: `Your account is suspended until ${formattedDate} for violating the Worker Conduct Policy.`
+          });
+        } else {
+          user.isSuspended = false;
+          user.suspendedUntil = null;
+          await user.save();
+        }
+      }
+
       res.json({
         _id: user._id,
         fullName: user.fullName,
@@ -136,7 +150,7 @@ router.post('/login', async (req, res) => {
         isOnline: user.isOnline,
         rating: user.rating,
         acceptedJobsCount: user.acceptedJobsCount,
-        points: user.points,
+        tokens: user.tokens,
         walletBalance: user.walletBalance !== undefined ? user.walletBalance : 0,
         token: generateToken(user._id),
         permissions: user.role === 'admin' 
@@ -158,16 +172,19 @@ router.post('/login', async (req, res) => {
 // @desc    Get user profile
 // @route   GET /api/auth/profile
 // @access  Private
+// @desc    Get user profile
+// @route   GET /api/auth/profile
+// @access  Private
 router.get('/profile', protect, async (req, res) => {
   try {
     if (req.query.lite === 'true') {
-      const user = await User.findById(req.user._id).select('walletBalance points acceptedJobsCount jobsCompleted rating role');
+      const user = await User.findById(req.user._id).select('walletBalance tokens acceptedJobsCount jobsCompleted rating role');
       if (user) {
         return res.json({
           _id: user._id,
           role: user.role,
           walletBalance: user.walletBalance !== undefined ? user.walletBalance : 0,
-          points: user.points !== undefined ? user.points : 0,
+          tokens: user.tokens !== undefined ? user.tokens : 0,
           acceptedJobsCount: user.acceptedJobsCount !== undefined ? user.acceptedJobsCount : 0,
           jobsCompleted: user.jobsCompleted !== undefined ? user.jobsCompleted : 0,
           rating: user.rating !== undefined ? user.rating : 4.9,
@@ -195,9 +212,13 @@ router.get('/profile', protect, async (req, res) => {
         rating: user.rating,
         jobsCompleted: user.jobsCompleted,
         acceptedJobsCount: user.acceptedJobsCount,
-        points: user.points,
+        tokens: user.tokens,
         walletBalance: user.walletBalance !== undefined ? user.walletBalance : 0,
         skills: user.skills,
+        warnings: user.warnings || [],
+        policyViolations: user.policyViolations || 0,
+        isSuspended: user.isSuspended || false,
+        suspendedUntil: user.suspendedUntil || null,
         permissions: user.role === 'admin' 
           ? (user.permissions && user.permissions.length > 0 
               ? user.permissions 
@@ -267,7 +288,7 @@ router.put('/profile', protect, async (req, res) => {
         rating: updatedUser.rating,
         jobsCompleted: updatedUser.jobsCompleted,
         acceptedJobsCount: updatedUser.acceptedJobsCount,
-        points: updatedUser.points,
+        tokens: updatedUser.tokens,
         walletBalance: updatedUser.walletBalance !== undefined ? updatedUser.walletBalance : 0,
         skills: updatedUser.skills
       });
@@ -318,7 +339,7 @@ router.get('/workers', async (req, res) => {
   }
 });
 
-// @desc    Purchase a subscription plan to add points
+// @desc    Purchase a subscription plan to add tokens
 // @route   POST /api/auth/subscribe
 // @access  Private (Worker only)
 router.post('/subscribe', protect, async (req, res) => {
@@ -328,20 +349,20 @@ router.post('/subscribe', protect, async (req, res) => {
     return res.status(400).json({ message: 'Only workers can purchase subscriptions' });
   }
 
-  let pointsToAdd = 0;
+  let tokensToAdd = 0;
   let price = 0;
   let gst = 0;
   let total = 0;
 
   if (planType === 'basic') {
     price = 100;
-    pointsToAdd = 90;
+    tokensToAdd = 90;
   } else if (planType === 'standard') {
     price = 200;
-    pointsToAdd = 190;
+    tokensToAdd = 190;
   } else if (planType === 'premium') {
     price = 500;
-    pointsToAdd = 460;
+    tokensToAdd = 460;
   } else {
     return res.status(400).json({ message: 'Invalid subscription plan type' });
   }
@@ -355,15 +376,11 @@ router.post('/subscribe', protect, async (req, res) => {
       return res.status(404).json({ message: 'Worker profile not found' });
     }
 
-    worker.points = (worker.points || 0) + pointsToAdd;
+    worker.tokens = (worker.tokens || 0) + tokensToAdd;
     await worker.save();
 
     // Automatically add subscription money to Admin wallet
-    const admin = await User.findOne({ role: 'admin' });
-    if (admin) {
-      admin.walletBalance = (admin.walletBalance || 0) + total;
-      await admin.save();
-    }
+    await Admin.updateMany({}, { $inc: { walletBalance: total } });
 
     res.json({
       message: `Successfully purchased ${planType} plan!`,
@@ -371,8 +388,8 @@ router.post('/subscribe', protect, async (req, res) => {
       price,
       gst,
       total,
-      pointsAdded: pointsToAdd,
-      updatedPoints: worker.points,
+      tokensAdded: tokensToAdd,
+      updatedTokens: worker.tokens,
       user: {
         _id: worker._id,
         fullName: worker.fullName,
@@ -388,7 +405,7 @@ router.post('/subscribe', protect, async (req, res) => {
         rating: worker.rating,
         jobsCompleted: worker.jobsCompleted,
         acceptedJobsCount: worker.acceptedJobsCount,
-        points: worker.points,
+        tokens: worker.tokens,
         walletBalance: worker.walletBalance !== undefined ? worker.walletBalance : 0,
         skills: worker.skills,
       }
@@ -417,6 +434,10 @@ router.post('/wallet/add', protect, async (req, res) => {
     user.walletBalance = (user.walletBalance || 0) + Number(amount);
     await user.save();
 
+    if (user.role === 'admin') {
+      await Admin.updateMany({}, { walletBalance: user.walletBalance });
+    }
+
     res.json({
       message: `Successfully added ₹${amount} to your wallet via ${method.toUpperCase()}!`,
       walletBalance: user.walletBalance,
@@ -434,7 +455,7 @@ router.post('/wallet/add', protect, async (req, res) => {
         isOnline: user.isOnline,
         rating: user.rating,
         acceptedJobsCount: user.acceptedJobsCount,
-        points: user.points,
+        tokens: user.tokens,
         walletBalance: user.walletBalance,
         skills: user.skills
       }
@@ -523,6 +544,10 @@ router.post('/wallet/withdraw', protect, async (req, res) => {
     user.walletBalance = (user.walletBalance || 0) - Number(amount);
     await user.save();
 
+    if (user.role === 'admin') {
+      await Admin.updateMany({}, { walletBalance: user.walletBalance });
+    }
+
     res.json({
       success: true,
       message: `Successfully withdrew ₹${amount} from your wallet!`,
@@ -586,14 +611,14 @@ router.post('/wallet/transfer', protect, async (req, res) => {
   }
 });
 
-// @desc    Recharge points using wallet balance
-// @route   POST /api/auth/recharge-points-wallet
+// @desc    Recharge tokens using wallet balance
+// @route   POST /api/auth/recharge-tokens-wallet
 // @access  Private (Worker only)
-router.post('/recharge-points-wallet', protect, async (req, res) => {
+router.post('/recharge-tokens-wallet', protect, async (req, res) => {
   const { planType } = req.body;
 
   if (req.user.role !== 'worker') {
-    return res.status(403).json({ message: 'Only workers can recharge points.' });
+    return res.status(403).json({ message: 'Only workers can recharge tokens.' });
   }
 
   const prices = {
@@ -602,17 +627,17 @@ router.post('/recharge-points-wallet', protect, async (req, res) => {
     premium: 499,
   };
 
-  const pointsToAdd = {
+  const tokensToAdd = {
     basic: 90,
     standard: 190,
     premium: 460,
   };
 
   const cost = prices[planType];
-  const points = pointsToAdd[planType];
+  const tokens = tokensToAdd[planType];
 
   if (!cost) {
-    return res.status(400).json({ message: 'Invalid points plan type selected' });
+    return res.status(400).json({ message: 'Invalid tokens plan type selected' });
   }
 
   try {
@@ -626,21 +651,17 @@ router.post('/recharge-points-wallet', protect, async (req, res) => {
     }
 
     worker.walletBalance = (worker.walletBalance || 0) - cost;
-    worker.points = (worker.points || 0) + points;
+    worker.tokens = (worker.tokens || 0) + tokens;
     await worker.save();
 
     // Automatically add recharge money to Admin wallet
-    const admin = await User.findOne({ role: 'admin' });
-    if (admin) {
-      admin.walletBalance = (admin.walletBalance || 0) + cost;
-      await admin.save();
-    }
+    await Admin.updateMany({}, { $inc: { walletBalance: cost } });
 
     res.json({
       success: true,
-      message: `Successfully recharged ${planType} plan! Added ${points} points.`,
+      message: `Successfully recharged ${planType} plan! Added ${tokens} tokens.`,
       walletBalance: worker.walletBalance,
-      updatedPoints: worker.points,
+      updatedTokens: worker.tokens,
       user: {
         _id: worker._id,
         fullName: worker.fullName,
@@ -655,10 +676,136 @@ router.post('/recharge-points-wallet', protect, async (req, res) => {
         isOnline: worker.isOnline,
         rating: worker.rating,
         acceptedJobsCount: worker.acceptedJobsCount,
-        points: worker.points,
+        tokens: worker.tokens,
         walletBalance: worker.walletBalance,
         skills: worker.skills
       }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Request forgot password OTP
+// @route   POST /api/auth/forgot-password/otp
+// @access  Public
+router.post('/forgot-password/otp', async (req, res) => {
+  const { emailOrPhone } = req.body;
+  if (!emailOrPhone) {
+    return res.status(400).json({ message: 'Email or phone number is required' });
+  }
+
+  try {
+    const user = await User.findOne({
+      $or: [
+        { phone: emailOrPhone },
+        { email: emailOrPhone }
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found with this email or phone number' });
+    }
+
+    // Generate a random 4 digit OTP code
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Store in User document
+    user.resetPasswordOtp = otp;
+    user.resetPasswordOtpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await user.save();
+
+    console.log(`[FORGOT PASSWORD OTP] Sent OTP ${otp} to phone number ${user.phone}`);
+
+    res.json({
+      success: true,
+      message: `Simulated SMS sent to ${user.phone}. Please enter the OTP to reset your password.`,
+      otp, // Sending OTP back in response for demonstration in frontend
+      phone: user.phone,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Verify forgot password OTP code
+// @route   POST /api/auth/forgot-password/verify
+// @access  Public
+router.post('/forgot-password/verify', async (req, res) => {
+  const { phone, otp } = req.body;
+
+  if (!phone || !otp) {
+    return res.status(400).json({ message: 'Phone and OTP are required' });
+  }
+
+  try {
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.resetPasswordOtp || user.resetPasswordOtp !== otp) {
+      return res.status(400).json({ message: 'Invalid verification OTP' });
+    }
+
+    if (user.resetPasswordOtpExpires && new Date(user.resetPasswordOtpExpires).getTime() < Date.now()) {
+      return res.status(400).json({ message: 'Verification OTP has expired' });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP verified successfully. You can now create your new password.',
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Reset password using OTP
+// @route   POST /api/auth/forgot-password/reset
+// @access  Public
+router.post('/forgot-password/reset', async (req, res) => {
+  const { phone, otp, newPassword } = req.body;
+
+  if (!phone || !otp || !newPassword) {
+    return res.status(400).json({ message: 'All fields are required' });
+  }
+
+  try {
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.resetPasswordOtp || user.resetPasswordOtp !== otp) {
+      return res.status(400).json({ message: 'Invalid verification OTP' });
+    }
+
+    if (user.resetPasswordOtpExpires && new Date(user.resetPasswordOtpExpires).getTime() < Date.now()) {
+      return res.status(400).json({ message: 'Verification OTP has expired' });
+    }
+
+    // Password validation: Strong password required
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+    if (!strongPasswordRegex.test(newPassword)) {
+      return res.status(400).json({ 
+        message: 'Password is too weak. It must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&#).' 
+      });
+    }
+
+    // Set new password
+    user.password = newPassword;
+    user.plainPassword = newPassword;
+
+    // Clear OTP fields
+    user.resetPasswordOtp = null;
+    user.resetPasswordOtpExpires = null;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password has been reset successfully. You can now login with your new password.',
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

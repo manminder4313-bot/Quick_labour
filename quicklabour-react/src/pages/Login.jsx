@@ -51,6 +51,19 @@ const Login = () => {
   const [enteredOtp, setEnteredOtp] = useState('');
   const [otpNotification, setOtpNotification] = useState('');
 
+  // Forgot Password States
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotEmailOrPhone, setForgotEmailOrPhone] = useState('');
+  const [forgotStep, setForgotStep] = useState(1); // 1 = request, 2 = verify & reset
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
+  const [forgotOtpNotification, setForgotOtpNotification] = useState('');
+  const [forgotMockOtp, setForgotMockOtp] = useState('');
+  const [forgotPhone, setForgotPhone] = useState('');
+
   // Notification States
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -215,7 +228,7 @@ const Login = () => {
     try {
       const loginRole = activeTab === 'worker' ? 'worker' : 'client';
       const data = await api.login(email, password, loginRole);
-      setSuccessMessage(`🎉 Login Successful! Redirecting to your dashboard...`);
+      setSuccessMessage(`Login successful. Redirecting to your dashboard...`);
       setTimeout(() => {
         if (data.role === 'admin') {
           navigate('/admin-dashboard');
@@ -315,7 +328,7 @@ const Login = () => {
 
         const res = await api.register(userData);
 
-        setSuccessMessage(`🎉 OTP Verified & Account Created Successfully! Redirecting to your dashboard...`);
+        setSuccessMessage(`OTP verified. Account created successfully. Redirecting to your dashboard...`);
         setOtpNotification('');
         setShowOtp(false);
 
@@ -386,13 +399,90 @@ const Login = () => {
     );
   };
 
+  // Forgot Password handlers
+  const handleRequestForgotOtp = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const res = await api.forgotPasswordOtp(forgotEmailOrPhone);
+      setForgotPhone(res.phone);
+      setForgotMockOtp(res.otp);
+      setForgotOtpNotification(`📱 SMS Received on ${res.phone}: Your password reset OTP is: ${res.otp}`);
+      setForgotStep(2);
+      setSuccessMessage(res.message);
+    } catch (error) {
+      setErrorMessage(`❌ ${error.message}`);
+    }
+  };
 
+  const handleVerifyForgotOtp = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const res = await api.verifyForgotPasswordOtp(forgotPhone, forgotOtp);
+      setForgotStep(3);
+      setSuccessMessage(res.message);
+    } catch (error) {
+      setErrorMessage(`❌ ${error.message}`);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setErrorMessage('❌ Passwords do not match!');
+      return;
+    }
+
+    // Client-side strong password validation check
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+    if (!strongPasswordRegex.test(forgotNewPassword)) {
+      setErrorMessage('❌ Password is too weak! It must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&#).');
+      return;
+    }
+
+    try {
+      const res = await api.resetPassword(forgotPhone, forgotOtp, forgotNewPassword);
+      setSuccessMessage(`✅ ${res.message}`);
+      
+      // Clear forgot password states and return to login screen
+      setTimeout(() => {
+        setIsForgotPassword(false);
+        setForgotStep(1);
+        setForgotEmailOrPhone('');
+        setForgotOtp('');
+        setForgotNewPassword('');
+        setForgotConfirmPassword('');
+        setForgotOtpNotification('');
+        setSuccessMessage('');
+      }, 2000);
+    } catch (error) {
+      setErrorMessage(`❌ ${error.message}`);
+    }
+  };
+
+  const handleResendForgotOtp = async () => {
+    setErrorMessage('');
+    setForgotOtp('');
+    try {
+      const res = await api.forgotPasswordOtp(forgotEmailOrPhone);
+      setForgotMockOtp(res.otp);
+      setForgotOtpNotification(`📱 SMS Received on ${res.phone}: Your new password reset OTP is: ${res.otp}`);
+    } catch (error) {
+      setErrorMessage(`❌ ${error.message}`);
+    }
+  };
 
 
   return (
     <div className="login-section">
       <div className="container d-flex justify-content-center">
-        <div className="login-card p-4 p-md-5 reveal visible" style={{ maxWidth: showOtp ? '480px' : isSignUp ? '650px' : '500px' }}>
+        <div className="login-card p-4 p-md-5 reveal visible" style={{ maxWidth: (showOtp || (isForgotPassword && (forgotStep === 2 || forgotStep === 3))) ? '480px' : isSignUp ? '650px' : '500px' }}>
           
           {showOtp ? (
             /* ──────────────── SIMULATED OTP VERIFICATION STEP ──────────────── */
@@ -471,6 +561,206 @@ const Login = () => {
                   </span>
                 </div>
               </form>
+            </div>
+          ) : isForgotPassword ? (
+            /* ──────────────── FORGOT PASSWORD FLOW ──────────────── */
+            <div>
+              {/* Header */}
+              <div className="text-center mb-4">
+                <div className="bg-primary bg-opacity-10 text-primary p-3 rounded-circle d-inline-flex mb-3" style={{ fontSize: '2rem', width: '64px', height: '64px', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="bi bi-shield-lock-fill text-primary"></i>
+                </div>
+                <h4 className="fw-800" style={{ color: '#0a2540', fontWeight: 800 }}>
+                  {forgotStep === 1 ? 'Reset Password' : forgotStep === 2 ? 'Verify OTP Code' : 'Create New Password'}
+                </h4>
+                <p className="text-muted small">
+                  {forgotStep === 1 
+                    ? 'Enter your registered email address or contact number to receive a 4-digit verification OTP.' 
+                    : forgotStep === 2 
+                      ? 'Please enter the OTP sent to your contact number.'
+                      : 'Please set your new secure password below.'}
+                </p>
+              </div>
+
+              {/* Simulated SMS Notification banner */}
+              {forgotStep === 2 && forgotOtpNotification && (
+                <div className="alert alert-warning py-3 px-3 rounded-16 border-warning mb-4 shadow-sm" role="alert" style={{ fontSize: '0.88rem', borderLeft: '5px solid #ffc107' }}>
+                  <div className="fw-800 text-dark mb-1" style={{ fontWeight: 800 }}>
+                    <i className="bi bi-chat-left-dots-fill text-warning me-2"></i>Simulated SMS Banner:
+                  </div>
+                  <div className="font-monospace text-dark bg-white p-2 rounded border mt-2 small" style={{ fontWeight: 600 }}>
+                    {forgotOtpNotification}
+                  </div>
+                </div>
+              )}
+
+              {/* Alerts */}
+              {errorMessage && (
+                <div className="alert alert-danger py-2 px-3 rounded-12 mb-3 small fw-700 text-center" role="alert">
+                  {errorMessage}
+                </div>
+              )}
+              {successMessage && (
+                <div className="alert alert-success py-2 px-3 rounded-12 mb-3 small fw-700 text-center" role="alert">
+                  {successMessage}
+                </div>
+              )}
+
+              {forgotStep === 1 ? (
+                /* Step 1: Request OTP */
+                <form onSubmit={handleRequestForgotOtp}>
+                  <div className="form-input-group mb-4">
+                    <label>Email Address or Phone Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 9876543210 or your email..."
+                      value={forgotEmailOrPhone}
+                      onChange={(e) => setForgotEmailOrPhone(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <button type="submit" className="login-submit-btn mb-3">
+                    Send Verification OTP
+                  </button>
+
+                  <div className="text-center mt-3 pt-2 border-top">
+                    <button 
+                      type="button" 
+                      className="btn btn-link text-decoration-none small fw-700" 
+                      style={{ color: '#0d6efd', fontSize: '0.85rem' }}
+                      onClick={() => {
+                        setIsForgotPassword(false);
+                        setErrorMessage('');
+                        setSuccessMessage('');
+                      }}
+                    >
+                      ← Back to Sign In
+                    </button>
+                  </div>
+                </form>
+              ) : forgotStep === 2 ? (
+                /* Step 2: Verify OTP */
+                <form onSubmit={handleVerifyForgotOtp}>
+                  <div className="form-input-group mb-4 text-center">
+                    <label className="text-muted small fw-700 mb-2">ENTER 4-DIGIT VERIFICATION CODE</label>
+                    <input
+                      type="text"
+                      maxLength="4"
+                      className="form-control text-center font-monospace fw-800 fs-3"
+                      style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
+                      placeholder="••••"
+                      value={forgotOtp}
+                      onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, ''))}
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <button type="submit" className="login-submit-btn mb-3">
+                    Verify OTP Code
+                  </button>
+
+                  <div className="text-center mt-3">
+                    <button 
+                      type="button" 
+                      className="btn btn-link text-decoration-none small fw-700" 
+                      style={{ color: '#0d6efd', fontSize: '0.85rem' }}
+                      onClick={handleResendForgotOtp}
+                    >
+                      <i className="bi bi-arrow-clockwise me-1"></i> Resend OTP Code
+                    </button>
+                  </div>
+
+                  <div className="text-center mt-2 border-top pt-3">
+                    <button
+                      type="button"
+                      className="btn btn-link text-decoration-none small text-muted"
+                      style={{ fontSize: '0.82rem' }}
+                      onClick={() => {
+                        setForgotStep(1);
+                        setForgotOtp('');
+                        setErrorMessage('');
+                        setSuccessMessage('');
+                      }}
+                    >
+                      ← Back to Step 1
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Step 3: Create New Password */
+                <form onSubmit={handleResetPassword}>
+                  <div className="form-input-group mb-3 position-relative">
+                    <label>New Password</label>
+                    <input
+                      type={showForgotNewPassword ? "text" : "password"}
+                      placeholder="Enter new password..."
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      required
+                      style={{ paddingRight: '45px' }}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="btn position-absolute border-0 bg-transparent"
+                      style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }}
+                      onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                    >
+                      <i className={`bi ${showForgotNewPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
+                    </button>
+                    <div className="text-muted small mt-1" style={{ fontSize: '0.72rem', lineHeight: '1.2' }}>Must be at least 8 characters, and contain uppercase, lowercase, numbers, and symbols.</div>
+                  </div>
+
+                  <div className="form-input-group mb-4 position-relative">
+                    <label>Confirm New Password</label>
+                    <input
+                      type={showForgotConfirmPassword ? "text" : "password"}
+                      placeholder="Repeat new password..."
+                      value={forgotConfirmPassword}
+                      onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      required
+                      style={{ paddingRight: '45px' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn position-absolute border-0 bg-transparent"
+                      style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }}
+                      onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
+                    >
+                      <i className={`bi ${showForgotConfirmPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
+                    </button>
+                    {forgotConfirmPassword && forgotNewPassword !== forgotConfirmPassword && (
+                      <div className="text-danger small mt-1" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
+                        ❌ Passwords do not match!
+                      </div>
+                    )}
+                  </div>
+
+                  <button type="submit" className="login-submit-btn mb-3">
+                    Update Password
+                  </button>
+
+                  <div className="text-center mt-2 border-top pt-3">
+                    <button
+                      type="button"
+                      className="btn btn-link text-decoration-none small text-muted"
+                      style={{ fontSize: '0.82rem' }}
+                      onClick={() => {
+                        setForgotStep(2);
+                        setForgotNewPassword('');
+                        setForgotConfirmPassword('');
+                        setErrorMessage('');
+                        setSuccessMessage('');
+                      }}
+                    >
+                      ← Back to OTP Entry
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           ) : (
             /* ──────────────── NORMAL SIGN IN / REGISTRATION LAYOUT ──────────────── */
@@ -847,7 +1137,23 @@ const Login = () => {
                         Remember Me
                       </label>
                     </div>
-                    <a href="#" className="small fw-700 text-decoration-none" style={{ color: '#0d6efd' }}>
+                    <a 
+                      href="#" 
+                      className="small fw-700 text-decoration-none" 
+                      style={{ color: '#0d6efd' }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsForgotPassword(true);
+                        setForgotStep(1);
+                        setForgotEmailOrPhone('');
+                        setForgotOtp('');
+                        setForgotNewPassword('');
+                        setForgotConfirmPassword('');
+                        setForgotOtpNotification('');
+                        setErrorMessage('');
+                        setSuccessMessage('');
+                      }}
+                    >
                       Forgot Password?
                     </a>
                   </div>

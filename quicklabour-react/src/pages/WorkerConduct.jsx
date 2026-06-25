@@ -60,7 +60,7 @@ const WorkerConduct = () => {
                   Failure to comply with this Code of Conduct may result in immediate actions including:
                 </p>
                 <ul className="ps-3 mb-4" style={{ listStyleType: 'disc' }}>
-                  <li>Points deduction or lowering of worker rating</li>
+                  <li>Tokens deduction or lowering of worker rating</li>
                   <li>Temporary suspension from placing bids</li>
                   <li>Permanent termination of your QuickLabour account</li>
                   <li>Reporting to law enforcement authorities in cases of illegal behavior</li>

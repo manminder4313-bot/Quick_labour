@@ -16,6 +16,19 @@ export const protect = async (req, res, next) => {
       const user = await User.findById(decoded.id);
       if (user) {
         user.password = undefined;
+        if (user.role === 'worker' && user.isSuspended) {
+          if (user.suspendedUntil && new Date() < new Date(user.suspendedUntil)) {
+            const formattedDate = new Date(user.suspendedUntil).toLocaleDateString();
+            return res.status(403).json({
+              message: `Your account is suspended until ${formattedDate} for violating the Worker Conduct Policy.`,
+              isSuspended: true
+            });
+          } else {
+            user.isSuspended = false;
+            user.suspendedUntil = null;
+            await user.save();
+          }
+        }
       }
       req.user = user;
 

@@ -33,6 +33,23 @@ const CountdownTimer = ({ job }) => {
 
       if (remainingMs <= 0) {
         setTimeLeft('00:00');
+        
+        // Trigger travel timeout API call if not already done
+        const timeoutKey = `job_timeout_triggered_${job._id}`;
+        if (!localStorage.getItem(timeoutKey)) {
+          localStorage.setItem(timeoutKey, 'true');
+          api.post(`/jobs/${job._id}/travel-timeout`)
+            .then(res => {
+              console.log('Travel timeout policy updated:', res);
+              if (res.penaltyResult) {
+                alert(res.message || 'Travel confirmation timer expired. Worker Conduct Policy penalty applied.');
+                window.location.reload();
+              }
+            })
+            .catch(err => {
+              console.error('Error triggering travel timeout:', err);
+            });
+        }
         return;
       }
 
@@ -53,7 +70,7 @@ const CountdownTimer = ({ job }) => {
 };
 
 const WorkerDashboard = () => {
-  const getPointsCost = (money) => {
+  const getTokensCost = (money) => {
     const cleanStr = String(money || '').replace(/[^\d.]/g, '');
     const val = parseFloat(cleanStr) || 0;
     if (val <= 500) return 10;
@@ -87,13 +104,15 @@ const WorkerDashboard = () => {
   const [actionAlert, setActionAlert] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active', 'invitations', or 'past'
 
-  // Subscriptions & Points states
-  const [workerPoints, setWorkerPoints] = useState(Number(sessionStorage.getItem('userPoints')) || 0);
+  // Subscriptions & Tokens states
+  const [workerTokens, setWorkerTokens] = useState(Number(sessionStorage.getItem('userTokens')) || 0);
   const [acceptedJobs, setAcceptedJobs] = useState(Number(sessionStorage.getItem('userAcceptedJobs')) || 0);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [walletBalance, setWalletBalance] = useState(Number(sessionStorage.getItem('userWalletBalance') || 0));
   const [showAddWalletModal, setShowAddWalletModal] = useState(false);
   const [showQrCodeModal, setShowQrCodeModal] = useState(false);
+  const [warnings, setWarnings] = useState([]);
+  const [policyViolations, setPolicyViolations] = useState(0);
 
   // Unified Wallet Hub Modal States
   const [showWalletHubModal, setShowWalletHubModal] = useState(false);
@@ -154,86 +173,188 @@ const WorkerDashboard = () => {
   const [mapJob, setMapJob] = useState(null);
   const [activeNotification, setActiveNotification] = useState(null);
   const prevAvailableIds = useRef([]);
+  const isFetchingRef = useRef(false);
+  const localVersionRef = useRef(0);
 
   // Safety & Dispute features states
   const [jobSubStatuses, setJobSubStatuses] = useState(
     JSON.parse(localStorage.getItem('jobSubStatuses') || '{}')
   );
-  const [disputes, setDisputes] = useState(
-    JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]')
-  );
+  const [disputes, setDisputes] = useState([]);
   const [noShowJob, setNoShowJob] = useState(null);
   const [showNoShowModal, setShowNoShowModal] = useState(false);
   const [selfieProof, setSelfieProof] = useState('');
+  const [noShowCallLog, setNoShowCallLog] = useState('');
   const [gpsProof, setGpsProof] = useState('');
   const [showSosModal, setShowSosModal] = useState(false);
   const [sosAlertTriggered, setSosAlertTriggered] = useState(false);
+  const [sosJobId, setSosJobId] = useState('');
+  const [sosEmergencyType, setSosEmergencyType] = useState('Physical Danger/Threat');
+  const [sosCustomDescription, setSosCustomDescription] = useState('');
+  const [claimRefund, setClaimRefund] = useState(false);
+  const [mySosAlerts, setMySosAlerts] = useState([]);
+  const [visibleSosAlerts, setVisibleSosAlerts] = useState([]);
+
+  const handleDismissSosAlert = (alertId) => {
+    setVisibleSosAlerts(prev => prev.filter(a => a._id !== alertId));
+    const seenAlerts = JSON.parse(localStorage.getItem('quicklabour_seen_sos_alerts') || '[]');
+    if (!seenAlerts.includes(alertId)) {
+      localStorage.setItem('quicklabour_seen_sos_alerts', JSON.stringify([...seenAlerts, alertId]));
+    }
+  };
   const [showWorkerDisputeModal, setShowWorkerDisputeModal] = useState(false);
   const [disputeJob, setDisputeJob] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
   const [disputePhoto, setDisputePhoto] = useState('');
   const [disputeCallLog, setDisputeCallLog] = useState('');
 
-  // Sync disputes regularly with localStorage
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setDisputes(JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]'));
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  const updateJobSubStatus = async (jobId, subStatus) => {
+    try {
+      let lat = workerLat;
+      let lng = workerLng;
 
-  const updateJobSubStatus = (jobId, subStatus) => {
-    const updated = { ...jobSubStatuses, [jobId]: subStatus };
-    setJobSubStatuses(updated);
-    localStorage.setItem('jobSubStatuses', JSON.stringify(updated));
-    setActionAlert(`🟢 Job status updated to: ${subStatus}`);
+      // Try to get latest geolocation coordinates
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const currentLat = position.coords.latitude;
+            const currentLng = position.coords.longitude;
+            setWorkerLat(currentLat);
+            setWorkerLng(currentLng);
+            await api.updateJobTracking(jobId, { latitude: currentLat, longitude: currentLng, subStatus });
+          },
+          async (error) => {
+            console.warn('Geolocation error:', error);
+            await api.updateJobTracking(jobId, { latitude: lat, longitude: lng, subStatus });
+          }
+        );
+      } else {
+        await api.updateJobTracking(jobId, { latitude: lat, longitude: lng, subStatus });
+      }
+
+      const updated = { ...jobSubStatuses, [jobId]: subStatus };
+      setJobSubStatuses(updated);
+      localStorage.setItem('jobSubStatuses', JSON.stringify(updated));
+      setActionAlert(`🟢 Job status updated to: ${subStatus}`);
+    } catch (err) {
+      console.error('Error updating job tracking status:', err);
+    }
   };
+
+  // High-frequency location polling for active job in "On the Way" status
+  useEffect(() => {
+    const activeTrackingJobs = hiredJobs.filter(job => jobSubStatuses[job._id] === 'On the Way');
+    if (activeTrackingJobs.length === 0) return;
+
+    const intervalId = setInterval(() => {
+      activeTrackingJobs.forEach(job => {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const currentLat = position.coords.latitude;
+              const currentLng = position.coords.longitude;
+              setWorkerLat(currentLat);
+              setWorkerLng(currentLng);
+              api.updateJobTracking(job._id, { latitude: currentLat, longitude: currentLng })
+                .catch(err => console.error('Error sending live coordinates:', err));
+            },
+            (error) => {
+              console.warn('Geolocation error during live tracking:', error);
+            }
+          );
+        }
+      });
+    }, 8000); // Poll and stream coordinates every 8 seconds
+
+    return () => clearInterval(intervalId);
+  }, [hiredJobs, jobSubStatuses]);
 
   const handleOpenNoShowModal = (job) => {
     setNoShowJob(job);
     setSelfieProof('');
+    setNoShowCallLog('');
     setGpsProof('');
     setShowNoShowModal(true);
   };
 
-  const handleSubmitNoShowClaim = () => {
+  const handleSubmitNoShowClaim = async () => {
     if (!selfieProof) {
       alert("Please upload a Selfie Proof to confirm your presence at the location.");
       return;
     }
-    // Credit ₹50 visit compensation to worker wallet
-    const updatedBalance = walletBalance + 50;
-    setWalletBalance(updatedBalance);
-    sessionStorage.setItem('userWalletBalance', updatedBalance);
-    
-    // Add ₹50 penalty to client
-    const clientPenalties = JSON.parse(localStorage.getItem('quicklabour_client_penalties') || '{}');
-    const clientId = noShowJob.client?._id || noShowJob.client;
-    clientPenalties[clientId] = (clientPenalties[clientId] || 0) + 50;
-    localStorage.setItem('quicklabour_client_penalties', JSON.stringify(clientPenalties));
+    if (!noShowCallLog) {
+      alert("Please upload a Call Log Screenshot to confirm you tried to call the client.");
+      return;
+    }
 
-    // Deduct client trust score
-    const clientTrustScores = JSON.parse(localStorage.getItem('quicklabour_client_trust_scores') || '{}');
-    const currentScore = clientTrustScores[clientId] !== undefined ? clientTrustScores[clientId] : 88;
-    clientTrustScores[clientId] = Math.max(0, currentScore - 10);
-    localStorage.setItem('quicklabour_client_trust_scores', JSON.stringify(clientTrustScores));
+    try {
+      const disputeData = {
+        jobId: noShowJob._id,
+        jobTitle: noShowJob.title || 'General Labour Task',
+        clientName: noShowJob.client?.fullName || 'Client',
+        workerName: sessionStorage.getItem('userName') || 'Worker',
+        submittedBy: 'worker',
+        reason: 'Client No-Show: Client was not present at the job location and did not answer calls.',
+        photo: selfieProof,
+        callLog: noShowCallLog,
+        gpsLocation: `Lat: ${workerLat || '19.0760'}° N, Lng: ${workerLng || '72.8777'}° E`
+      };
 
-    // Set job status to Rejected locally
-    setHiredJobs(prev => prev.map(j => j._id === noShowJob._id ? { ...j, status: 'Rejected' } : j));
-    
-    setActionAlert("✅ Visit Compensation of ₹50 added to your wallet! Client has been penalized.");
-    setShowNoShowModal(false);
-    setNoShowJob(null);
+      const newDispute = await api.submitDispute(disputeData);
+      setDisputes(prev => [newDispute, ...prev]);
+
+      // Update local job status to Disputed
+      setHiredJobs(prev => prev.map(j => j._id === noShowJob._id ? { ...j, status: 'Disputed' } : j));
+
+      setActionAlert("✅ Client No-Show dispute submitted successfully! Admin will verify proofs and resolve it.");
+      setShowNoShowModal(false);
+      setNoShowJob(null);
+    } catch (err) {
+      alert("❌ Failed to submit dispute: " + err.message);
+    }
   };
 
-  const handleTriggerSOS = () => {
+  const fetchMySosAlerts = async () => {
+    try {
+      const data = await api.getMySos();
+      setMySosAlerts(data);
+    } catch (err) {
+      console.error('Error fetching SOS alerts:', err);
+    }
+  };
+
+  const fetchDisputes = async () => {
+    try {
+      const data = await api.getDisputes();
+      setDisputes(data);
+    } catch (err) {
+      console.error('Error fetching disputes:', err);
+    }
+  };
+
+  const handleTriggerSOS = async () => {
+    const targetJobId = sosJobId || (activeHiredJobs[0] ? activeHiredJobs[0]._id : null);
+    if (!targetJobId) {
+      alert("❌ You don't have any active jobs to trigger SOS for.");
+      return;
+    }
+    
     setSosAlertTriggered(true);
-    setTimeout(() => {
-      setShowSosModal(false);
+    try {
+      await api.triggerSos(targetJobId, `${sosEmergencyType}: ${sosCustomDescription}`, workerLat, workerLng, claimRefund);
+      setTimeout(() => {
+        setShowSosModal(false);
+        setSosAlertTriggered(false);
+        setSosCustomDescription('');
+        setClaimRefund(false);
+        alert("🚨 SOS Alert sent successfully to Emergency Contacts & QuickLabour Safety desk. The request has been transferred.");
+        fetchJobs();
+        fetchMySosAlerts();
+      }, 2000);
+    } catch (err) {
       setSosAlertTriggered(false);
-      alert("🚨 SOS Alert sent successfully to Emergency Contacts & QuickLabour Safety desk.");
-    }, 2000);
+      alert("❌ Failed to trigger SOS: " + err.message);
+    }
   };
 
   const handleOpenWorkerDispute = (job) => {
@@ -244,35 +365,36 @@ const WorkerDashboard = () => {
     setShowWorkerDisputeModal(true);
   };
 
-  const handleSubmitWorkerDispute = () => {
+  const handleSubmitWorkerDispute = async () => {
     if (!disputeReason) {
       alert("Please provide the reason for your dispute.");
       return;
     }
-    const newDispute = {
-      _id: `disp_${Date.now()}`,
-      jobId: disputeJob._id,
-      jobTitle: disputeJob.title,
-      clientName: disputeJob.client?.fullName || 'Client',
-      workerName: profileName,
-      submittedBy: 'worker',
-      reason: disputeReason,
-      photo: disputePhoto || 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=150&q=80',
-      callLog: disputeCallLog || 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=150&q=80',
-      gpsLocation: `${workerLat || '19.0760'}° N, ${workerLng || '72.8777'}° E`,
-      status: 'Pending',
-      createdAt: new Date().toLocaleString()
-    };
-    const updatedDisputes = [newDispute, ...disputes];
-    setDisputes(updatedDisputes);
-    localStorage.setItem('quicklabour_disputes', JSON.stringify(updatedDisputes));
-    
-    // Decrease worker trust score slightly for filing dispute
-    const currentScore = Number(localStorage.getItem('quicklabour_worker_trust_score') || 95);
-    localStorage.setItem('quicklabour_worker_trust_score', Math.max(70, currentScore - 2));
+    try {
+      const disputeData = {
+        jobId: disputeJob._id,
+        jobTitle: disputeJob.title,
+        clientName: disputeJob.client?.fullName || 'Client',
+        workerName: profileName,
+        submittedBy: 'worker',
+        reason: disputeReason,
+        photo: disputePhoto || 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=150&q=80',
+        callLog: disputeCallLog || 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=150&q=80',
+        gpsLocation: `${workerLat || '19.0760'}° N, ${workerLng || '72.8777'}° E`,
+      };
 
-    setShowWorkerDisputeModal(false);
-    alert("⚖️ Dispute registered successfully! QuickLabour Support will review photo evidence, GPS location, and call logs.");
+      const newDispute = await api.submitDispute(disputeData);
+      setDisputes(prev => [newDispute, ...prev]);
+      
+      // Decrease worker trust score slightly for filing dispute
+      const currentScore = Number(localStorage.getItem('quicklabour_worker_trust_score') || 95);
+      localStorage.setItem('quicklabour_worker_trust_score', Math.max(70, currentScore - 2));
+
+      setShowWorkerDisputeModal(false);
+      alert("⚖️ Dispute registered successfully! QuickLabour Support will review photo evidence, GPS location, and call logs.");
+    } catch (err) {
+      alert("❌ Failed to submit dispute: " + err.message);
+    }
   };
 
   // Edit Profile Form States
@@ -398,6 +520,21 @@ const WorkerDashboard = () => {
     }
   };
 
+  const getDistanceInKm = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+      ; 
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const d = R * c; // Distance in km
+    return d.toFixed(2);
+  };
+
   const handleOpenMap = (job) => {
     setMapJob(job);
     setShowMapModal(true);
@@ -432,6 +569,8 @@ const WorkerDashboard = () => {
   };
 
   const fetchJobs = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       const data = await api.getJobs();
       const sortedHired = [...(data.hiredJobs || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -466,14 +605,44 @@ const WorkerDashboard = () => {
 
       setHiredJobs(sortedHired);
       setAvailableJobs(sortedAvailable);
+      await fetchMySosAlerts();
+      await fetchDisputes();
     } catch (error) {
       console.error('Error fetching jobs:', error.message);
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 
   useEffect(() => {
-    fetchJobs();
+    let timerId;
+    let isActive = true;
 
+    const poll = async () => {
+      if (!isActive) return;
+      try {
+        const { version } = await api.getJobsStateVersion();
+        if (version !== localVersionRef.current) {
+          localVersionRef.current = version;
+          await fetchJobs();
+        }
+      } catch (err) {
+        console.error("Failed to check state version:", err);
+      }
+      if (isActive) {
+        timerId = setTimeout(poll, 4000); // Check version every 4 seconds
+      }
+    };
+
+    poll();
+
+    return () => {
+      isActive = false;
+      clearTimeout(timerId);
+    };
+  }, [isOnline]);
+
+  useEffect(() => {
     // Sync complete worker profile details from database on mount
     api.getProfile().then(user => {
       if (user.fullName) setProfileName(user.fullName);
@@ -492,12 +661,14 @@ const WorkerDashboard = () => {
 
       setCompletedCount(user.jobsCompleted);
       setWorkerRating(user.rating !== undefined ? user.rating : '4.9');
-      setWorkerPoints(user.points !== undefined ? user.points : 0);
+      setWorkerTokens(user.tokens !== undefined ? user.tokens : 0);
       setAcceptedJobs(user.acceptedJobsCount !== undefined ? user.acceptedJobsCount : 0);
       if (user.walletBalance !== undefined) {
         setWalletBalance(user.walletBalance);
         sessionStorage.setItem('userWalletBalance', user.walletBalance);
       }
+      setWarnings(user.warnings || []);
+      setPolicyViolations(user.policyViolations || 0);
 
       if (user.fullName) sessionStorage.setItem('userName', user.fullName);
       if (user.phone) sessionStorage.setItem('userPhone', user.phone);
@@ -506,10 +677,36 @@ const WorkerDashboard = () => {
       if (user.occupation) sessionStorage.setItem('userOccupation', user.occupation);
       sessionStorage.setItem('userJobsCompleted', user.jobsCompleted);
       sessionStorage.setItem('userRating', user.rating !== undefined ? user.rating : '4.9');
-      sessionStorage.setItem('userPoints', user.points !== undefined ? user.points : 0);
+      sessionStorage.setItem('userTokens', user.tokens !== undefined ? user.tokens : 0);
       sessionStorage.setItem('userAcceptedJobs', user.acceptedJobsCount !== undefined ? user.acceptedJobsCount : 0);
+      fetchMySosAlerts();
+      fetchDisputes();
     }).catch(err => console.error(err));
   }, []);
+
+  useEffect(() => {
+    if (mySosAlerts && mySosAlerts.length > 0) {
+      const seenAlerts = JSON.parse(localStorage.getItem('quicklabour_seen_sos_alerts') || '[]');
+      const unseen = mySosAlerts.filter(alert => !seenAlerts.includes(alert._id));
+      
+      if (unseen.length > 0) {
+        setVisibleSosAlerts(unseen);
+        
+        const timer = setTimeout(() => {
+          setVisibleSosAlerts([]);
+        }, 10000);
+        
+        const newSeenList = [...seenAlerts, ...unseen.map(a => a._id)];
+        localStorage.setItem('quicklabour_seen_sos_alerts', JSON.stringify(newSeenList));
+        
+        return () => clearTimeout(timer);
+      } else {
+        setVisibleSosAlerts([]);
+      }
+    } else {
+      setVisibleSosAlerts([]);
+    }
+  }, [mySosAlerts]);
 
   const handleToggleOnline = async () => {
     try {
@@ -575,9 +772,9 @@ const WorkerDashboard = () => {
   };
 
   const handleAcceptJob = async (id, clientName, money) => {
-    const pointsCost = getPointsCost(money);
-    if (workerPoints < pointsCost) {
-      setActionAlert(`⚠️ This job requires ${pointsCost} points, but you only have ${workerPoints} points. Please purchase a subscription plan.`);
+    const tokensCost = getTokensCost(money);
+    if (workerTokens < tokensCost) {
+      setActionAlert(`⚠️ This job requires ${tokensCost} tokens, but you only have ${workerTokens} tokens. Please purchase a subscription plan.`);
       setShowSubscriptionModal(true);
       return;
     }
@@ -585,16 +782,16 @@ const WorkerDashboard = () => {
       await api.updateJobStatus(id, 'Accepted');
       setActionAlert(`✅ Accepted job invitation from ${clientName}! Check your phone for details.`);
       
-      // Refresh profile to get updated points and accepted jobs count
+      // Refresh profile to get updated tokens and accepted jobs count
       const updatedProfile = await api.getProfile();
-      setWorkerPoints(updatedProfile.points || 0);
+      setWorkerTokens(updatedProfile.tokens || 0);
       setAcceptedJobs(updatedProfile.acceptedJobsCount || 0);
       
       fetchJobs(); // Reload jobs from database
       setTimeout(() => setActionAlert(''), 5000);
     } catch (error) {
-      if (error.message.includes('INSUFFICIENT_POINTS')) {
-        setActionAlert('⚠️ Insufficient points! Please purchase a subscription to accept more jobs.');
+      if (error.message.includes('INSUFFICIENT_TOKENS')) {
+        setActionAlert('⚠️ Insufficient tokens! Please purchase a subscription to accept more jobs.');
         setShowSubscriptionModal(true);
       } else {
         alert('❌ Error accepting job: ' + error.message);
@@ -739,14 +936,14 @@ const WorkerDashboard = () => {
     }
   };
 
-  const handleRechargePointsWithWallet = async (planType) => {
+  const handleRechargeTokensWithWallet = async (planType) => {
     setIsPayingWithWallet(true);
     try {
-      const res = await api.rechargePointsWallet(planType);
-      setWorkerPoints(res.updatedPoints || 0);
+      const res = await api.rechargeTokensWallet(planType);
+      setWorkerTokens(res.updatedTokens || 0);
       setWalletBalance(res.walletBalance || 0);
       setPaymentSuccess(true);
-      setActionAlert(`🎉 Successfully recharged points using wallet balance! Added ${res.pointsAdded} points.`);
+      setActionAlert(`🎉 Successfully recharged tokens using wallet balance! Added ${res.tokensAdded} tokens.`);
       
       // Log transaction to admin wallet history in localStorage
       try {
@@ -754,7 +951,7 @@ const WorkerDashboard = () => {
         const cost = planType === 'basic' ? 99 : planType === 'standard' ? 199 : 499;
         adminTxs.unshift({
           id: 'TXN-' + Math.floor(100000 + Math.random() * 900000),
-          type: `Points Subscription (Wallet - ${planType.toUpperCase()})`,
+          type: `Tokens Subscription (Wallet - ${planType.toUpperCase()})`,
           amount: cost,
           isCredit: true,
           status: 'Success',
@@ -795,7 +992,7 @@ const WorkerDashboard = () => {
         return;
       }
       setCardError('');
-      await handleRechargePointsWithWallet(selectedPlan);
+      await handleRechargeTokensWithWallet(selectedPlan);
       return;
     }
 
@@ -832,16 +1029,16 @@ const WorkerDashboard = () => {
       setActionAlert('🔐 Authorizing card parameters...');
       await new Promise(r => setTimeout(r, 1200));
 
-      // 2. Validate and claim points credits on the database
+      // 2. Validate and claim tokens credits on the database
       const verifyRes = await api.verifyPaymentAndCredit(intentRes.intentId, selectedPlan, intentRes.isSimulated);
 
-      setWorkerPoints(verifyRes.user.points || 0);
+      setWorkerTokens(verifyRes.user.tokens || 0);
       setAcceptedJobs(verifyRes.user.acceptedJobsCount || 0);
-      sessionStorage.setItem('userPoints', verifyRes.user.points || 0);
+      sessionStorage.setItem('userTokens', verifyRes.user.tokens || 0);
       sessionStorage.setItem('userAcceptedJobs', verifyRes.user.acceptedJobsCount || 0);
 
       setPaymentSuccess(true);
-      setActionAlert(`🎉 Successful! Subscribed to ${selectedPlan.toUpperCase()} plan. Added ${verifyRes.pointsAdded} points.`);
+      setActionAlert(`🎉 Successful! Subscribed to ${selectedPlan.toUpperCase()} plan. Added ${verifyRes.tokensAdded} tokens.`);
 
       // Log transaction to admin wallet history in localStorage
       try {
@@ -849,7 +1046,7 @@ const WorkerDashboard = () => {
         const cost = selectedPlan === 'basic' ? 105 : selectedPlan === 'standard' ? 210 : 525; // with GST
         adminTxs.unshift({
           id: 'TXN-' + Math.floor(100000 + Math.random() * 900000),
-          type: `Points Subscription (Stripe - ${selectedPlan.toUpperCase()})`,
+          type: `Tokens Subscription (Stripe - ${selectedPlan.toUpperCase()})`,
           amount: cost,
           isCredit: true,
           status: 'Success',
@@ -998,7 +1195,7 @@ const WorkerDashboard = () => {
                   <span className="text-white-50 small fw-700" style={{ fontSize: '0.85rem' }}>Rate:</span> ₹{activeNotification.money}/day
                 </span>
                 <span className="badge bg-warning bg-opacity-10 text-warning px-2.5 py-1.5 rounded-pill fw-800 d-flex align-items-center gap-1" style={{ fontSize: '0.72rem', border: '1px solid rgba(255, 193, 7, 0.2)' }}>
-                  🪙 {getPointsCost(activeNotification.money)} pts
+                  🪙 {getTokensCost(activeNotification.money)} tkn
                 </span>
               </div>
               
@@ -1044,6 +1241,76 @@ const WorkerDashboard = () => {
             </div>
           )}
 
+          {/* Policy warnings banner */}
+          {warnings && warnings.length > 0 && (
+            <div className="alert alert-danger alert-dismissible fade show rounded-24 border-danger bg-danger bg-opacity-10 text-danger-emphasis mb-4 shadow-sm py-3.5 px-4" role="alert">
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <i className="bi bi-exclamation-octagon-fill fs-5 text-danger"></i>
+                <strong className="fw-800 text-danger fs-6">Worker Conduct Policy Notices ({policyViolations} Violation{policyViolations > 1 ? 's' : ''})</strong>
+              </div>
+              <ul className="mb-0 text-start ps-3" style={{ fontSize: '0.85rem' }}>
+                {warnings.map((warn, index) => (
+                  <li key={index} className="mb-1 fw-bold text-dark">{warn}</li>
+                ))}
+              </ul>
+              <div className="mt-2.5 small fw-700 text-muted">
+                ⚠️ Repeated timeouts will trigger automatic fines (₹50) and temporary account suspension (7 days).
+              </div>
+            </div>
+          )}
+
+          {/* SOS pending/refunded alert notifications */}
+          {visibleSosAlerts && visibleSosAlerts.length > 0 && (
+            <div className="mb-4">
+              {visibleSosAlerts.map(alert => (
+                <div 
+                  key={alert._id} 
+                  className={`alert alert-dismissible fade show py-3.5 px-4 rounded-24 border mb-3 shadow-sm ${
+                    !alert.claimRefund
+                      ? 'alert-danger border-danger bg-danger bg-opacity-10 text-dark'
+                      : alert.refundStatus === 'Pending' 
+                      ? 'alert-warning border-warning bg-warning bg-opacity-10 text-dark' 
+                      : alert.refundStatus === 'Refunded' 
+                      ? 'alert-success border-success bg-success bg-opacity-10 text-dark'
+                      : 'alert-secondary border-secondary bg-light text-muted'
+                  }`}
+                  role="alert"
+                >
+                  <div className="d-flex align-items-center justify-content-between mb-1">
+                    <span className="fw-800 fs-6">
+                      {alert.claimRefund
+                        ? (alert.refundStatus === 'Pending' ? '🚨 Pending 50% Token Refund' : alert.refundStatus === 'Refunded' ? '✅ SOS Refund Approved' : 'ℹ️ SOS Alert Closed')
+                        : '🚨 SOS Alert Registered'
+                      }
+                    </span>
+                    <div className="d-flex align-items-center gap-2">
+                      <span className={`badge rounded-pill px-3 py-1 ${
+                        alert.claimRefund
+                          ? (alert.refundStatus === 'Pending' ? 'bg-warning text-dark' : alert.refundStatus === 'Refunded' ? 'bg-success text-white' : 'bg-secondary text-white')
+                          : 'bg-danger text-white'
+                      }`}>
+                        {alert.claimRefund ? alert.refundStatus : 'SOS Alert'}
+                      </span>
+                      <button 
+                        type="button" 
+                        className="btn-close" 
+                        onClick={() => handleDismissSosAlert(alert._id)}
+                        aria-label="Close"
+                        style={{ position: 'static', padding: '0.5rem', margin: 0 }}
+                      ></button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 550, paddingRight: '24px' }}>
+                    Emergency SOS alert for <strong>{alert.job?.title || 'Job'}</strong> has been registered. 
+                    {alert.claimRefund && alert.refundStatus === 'Pending' && ` 50% tokens refund (+${alert.refundAmount} tokens) is pending admin verification.`}
+                    {alert.claimRefund && alert.refundStatus === 'Refunded' && ` 50% tokens refund of +${alert.refundAmount} tokens has been successfully credited to your account!`}
+                    {alert.claimRefund && alert.refundStatus === 'No Refund' && ' Admin completed the review. Token refund is not applicable.'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Dashboard Banner */}
           <div className="dashboard-banner reveal visible">
             <div>
@@ -1074,7 +1341,7 @@ const WorkerDashboard = () => {
 
           {/* Stats Row */}
           <div className="row g-4 mb-5">
-            <div className="col-xl-4 col-md-6 col-sm-12">
+            <div className="col-xl-4 col-md-6 col-6">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper green">
                   <i className="bi bi-patch-check-fill"></i>
@@ -1085,7 +1352,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl-4 col-md-6 col-sm-12">
+            <div className="col-xl-4 col-md-6 col-6">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper blue">
                   <i className="bi bi-cash-stack"></i>
@@ -1096,7 +1363,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl-4 col-md-6 col-sm-12">
+            <div className="col-xl-4 col-md-6 col-6">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper purple">
                   <i className="bi bi-briefcase-fill"></i>
@@ -1107,7 +1374,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl-4 col-md-6 col-sm-12">
+            <div className="col-xl-4 col-md-6 col-6">
               <div className="dashboard-stat-card">
                 <div className="stat-icon-wrapper orange">
                   <i className="bi bi-star-fill"></i>
@@ -1118,7 +1385,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl-4 col-md-6 col-sm-12">
+            <div className="col-xl-4 col-md-6 col-6">
               <div className="dashboard-stat-card cursor-pointer" onClick={() => { setActiveWalletTab('scanner'); setShowWalletHubModal(true); }} style={{ cursor: 'pointer' }}>
                 <div className="stat-icon-wrapper purple">
                   <i className="bi bi-wallet-fill"></i>
@@ -1129,7 +1396,7 @@ const WorkerDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="col-xl-4 col-md-6 col-sm-12">
+            <div className="col-xl-4 col-md-6 col-6">
               <div 
                 className="dashboard-stat-card position-relative overflow-hidden cursor-pointer d-flex align-items-center justify-content-between gap-2" 
                 onClick={() => setShowSubscriptionModal(true)} 
@@ -1157,16 +1424,16 @@ const WorkerDashboard = () => {
                   </div>
                   <div>
                     <div className="stat-number text-dark d-flex align-items-center gap-1">
-                      {workerPoints} <span className="small text-muted fw-600" style={{ fontSize: '0.8rem' }}>PTS</span>
+                      {workerTokens} <span className="small text-muted fw-600" style={{ fontSize: '0.8rem' }}>TKN</span>
                     </div>
-                    <div className="stat-label">Points Balance</div>
+                    <div className="stat-label">Token Balance</div>
                   </div>
                 </div>
-                {/* Circle orange plus button representing add/adding points */}
+                {/* Circle orange plus button representing add/adding tokens */}
                 <div 
                   className="d-flex align-items-center justify-content-center bg-warning bg-opacity-10 rounded-circle shadow-sm" 
                   style={{ width: '24px', height: '24px', border: '1px solid rgba(245, 166, 35, 0.3)', transition: 'all 0.2s', flexShrink: 0 }}
-                  title="Add more points"
+                  title="Add more tokens"
                 >
                   <i className="bi bi-plus-lg fw-900" style={{ color: '#f5a623', fontSize: '0.7rem' }}></i>
                 </div>
@@ -1288,7 +1555,7 @@ const WorkerDashboard = () => {
                           {job.client && (
                             <div className="bg-light p-3 rounded-16 border d-flex justify-content-between align-items-center flex-wrap gap-3">
                               <div className="d-flex align-items-center gap-3">
-                                <img src={job.client.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80'} alt={job.client.fullName} className="bidder-profile-img" />
+                                <img src={job.client.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.client.fullName || 'Client')}&background=random&color=fff&size=128`} alt={job.client.fullName} className="bidder-profile-img" />
                                 <div>
                                   <span className="small text-muted fw-700">Hiring Client</span>
                                   <h6 className="mb-0 mt-1">{job.client.fullName}</h6>
@@ -1376,20 +1643,6 @@ const WorkerDashboard = () => {
                                   >
                                     ⚠️ Client Not Available / No-Show
                                   </button>
-                                  <button 
-                                    onClick={() => {
-                                      api.put(`/jobs/${job._id}/status`, { status: 'Completed' })
-                                        .then(() => {
-                                          setHiredJobs(hiredJobs.map(j => j._id === job._id ? { ...j, status: 'Completed' } : j));
-                                          setActionAlert("✅ Job marked completed! Chat logs cleared.");
-                                        })
-                                        .catch(err => alert("Error completing job: " + err.message));
-                                    }}
-                                    className="btn btn-sm btn-success fw-bold px-3 py-1 rounded-10"
-                                    style={{ fontSize: '0.78rem' }}
-                                  >
-                                    ✅ Complete Work
-                                  </button>
                                 </div>
                               </div>
                             )}
@@ -1475,7 +1728,7 @@ const WorkerDashboard = () => {
                               <div className="fw-800 text-success mb-1" style={{ fontSize: '1.1rem' }}>{inv.rate}</div>
                               <div className="mb-2">
                                 <span className="badge bg-warning bg-opacity-15 text-dark rounded-pill fw-bold" style={{ border: '1px solid #ffc107', fontSize: '0.72rem' }}>
-                                  🪙 Cost: {getPointsCost(inv.money)} pts
+                                  🪙 Cost: {getTokensCost(inv.money)} tkn
                                 </span>
                               </div>
                               <div className="d-flex gap-2">
@@ -1530,7 +1783,7 @@ const WorkerDashboard = () => {
                           {job.client && (
                             <div className="bg-light p-3 rounded-16 border d-flex justify-content-between align-items-center flex-wrap gap-3">
                               <div className="d-flex align-items-center gap-3">
-                                <img src={job.client.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80'} alt={job.client.fullName} className="bidder-profile-img" />
+                                <img src={job.client.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.client.fullName || 'Client')}&background=random&color=fff&size=128`} alt={job.client.fullName} className="bidder-profile-img" />
                                 <div>
                                   <span className="small text-muted fw-700">Hiring Client</span>
                                   <h6 className="mb-0 mt-1">{job.client.fullName}</h6>
@@ -1704,7 +1957,7 @@ const WorkerDashboard = () => {
                 </button>
               </div>
 
-              {/* Subscription and Points Card */}
+              {/* Subscription and Tokens Card */}
               <div className="dashboard-card mb-4" style={{
                 background: 'linear-gradient(135deg, #1e1b4b, #311042)',
                 color: '#ffffff',
@@ -1713,24 +1966,24 @@ const WorkerDashboard = () => {
               }}>
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h5 className="fw-800 m-0" style={{ color: '#fff', fontSize: '1.1rem' }}>
-                    ⚡ Subscriptions & Points
+                    ⚡ Subscriptions & Tokens
                   </h5>
                   <span className="badge bg-warning text-dark fw-800" style={{ fontSize: '0.72rem' }}>
-                    {workerPoints > 0 ? 'Active' : 'Points Exhausted'}
+                    {workerTokens > 0 ? 'Active' : 'Tokens Exhausted'}
                   </span>
                 </div>
                 
                 <div className="p-3 rounded-16 mb-3" style={{ background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                   <div className="d-flex justify-content-between align-items-center">
-                    <span className="small text-white-50">Points Balance</span>
-                    <span className="fw-900 text-warning" style={{ fontSize: '1.25rem' }}>{workerPoints} PTS</span>
+                    <span className="small text-white-50">Token Balance</span>
+                    <span className="fw-900 text-warning" style={{ fontSize: '1.25rem' }}>{workerTokens} TKN</span>
                   </div>
                 </div>
 
                 <p className="small text-white-50 mb-3" style={{ lineHeight: '1.4' }}>
-                  {workerPoints >= 10 
-                    ? 'Each job acceptance costs 10 points. Buy more points to keep accepting jobs.'
-                    : '⚠️ Insufficient points balance! Please purchase points to accept job invitations.'
+                  {workerTokens >= 10 
+                    ? 'Each job acceptance costs 10 tokens. Buy more tokens to keep accepting jobs.'
+                    : '⚠️ Insufficient token balance! Please purchase tokens to accept job invitations.'
                   }
                 </p>
 
@@ -1742,7 +1995,7 @@ const WorkerDashboard = () => {
                     fontSize: '0.9rem'
                   }}
                 >
-                  <i className="bi bi-gem"></i> Buy Points & Plans
+                  <i className="bi bi-gem"></i> Buy Tokens & Plans
                 </button>
               </div>
 
@@ -1994,6 +2247,11 @@ const WorkerDashboard = () => {
                   <span className="badge bg-success-subtle text-success px-3 py-2 rounded-pill fw-800 d-flex align-items-center gap-1">
                     <span className="status-dot online p-1"></span> Live Google GPS Route
                   </span>
+                  {workerLat && workerLng && mapJob.latitude && mapJob.longitude && (
+                    <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill fw-800">
+                      📏 Distance: {getDistanceInKm(workerLat, workerLng, mapJob.latitude, mapJob.longitude)} km
+                    </span>
+                  )}
                 </div>
                 <div className="d-flex gap-2">
                   <a
@@ -2075,7 +2333,7 @@ const WorkerDashboard = () => {
                     </div>
                     <h3 className="fw-900 text-success" style={{ color: '#1db97a' }}>Payment Successful!</h3>
                     <p className="text-muted mt-2 max-width-400 mx-auto">
-                      Your transaction was completed securely. Your points balance has been updated instantly.
+                      Your tokens balance has been updated instantly.
                     </p>
                     <div className="spinner-border text-success spinner-border-sm mt-3" role="status"></div>
                   </div>
@@ -2085,16 +2343,16 @@ const WorkerDashboard = () => {
                       <h4 className="fw-900" style={{ color: '#0a2540', letterSpacing: '-0.02em' }}>⚡ Boost Your Workforce Profile</h4>
                       <p className="text-muted small mx-auto" style={{ maxWidth: '600px', fontSize: '0.92rem' }}>
                         You've enjoyed your <span className="badge bg-warning bg-opacity-20 text-warning-emphasis fw-800 px-2 py-1 rounded" style={{ color: '#0a2540', background: 'rgba(245, 166, 35, 0.15)', border: '1px solid rgba(245, 166, 35, 0.3)' }}>2 FREE job accepts</span>. 
-                        Subscribe to a premium plan to gain high-priority points. Every manual job acceptance costs only <strong className="text-dark">10 points</strong>.
+                        Subscribe to a premium plan to gain high-priority tokens. Every manual job acceptance costs only <strong className="text-dark">10 tokens</strong>.
                       </p>
                     </div>
 
                     {/* Subscription Cards Grid */}
-                    <div className="row g-4 mb-4">
+                    <div className="row g-4 mb-4 subscription-modal-row">
                       {/* Basic Plan */}
-                      <div className="col-md-4">
+                      <div className="col-md-4 subscription-modal-col">
                         <div 
-                          className="card rounded-24 p-4 text-center h-100 cursor-pointer position-relative animate-scale-up"
+                          className="card rounded-24 p-4 text-center h-100 cursor-pointer position-relative animate-scale-up subscription-card"
                           onClick={() => setSelectedPlan('basic')}
                           style={{
                             cursor: 'pointer',
@@ -2105,26 +2363,35 @@ const WorkerDashboard = () => {
                             transform: selectedPlan === 'basic' ? 'translateY(-6px)' : 'none',
                           }}
                         >
-                          <div className="fw-800 small uppercase mb-2 tracking-wider" style={{ fontSize: '0.75rem', color: '#0d6efd' }}>BASIC STARTER</div>
-                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: '#0d6efd', background: 'rgba(13, 110, 253, 0.1)' }}>
+                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3 plan-icon-container" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: '#0d6efd', background: 'rgba(13, 110, 253, 0.1)' }}>
                             <i className="bi bi-rocket-takeoff-fill"></i>
                           </div>
-                          <h2 className="fw-900 mt-1 mb-0" style={{ color: '#0a2540', fontSize: '2rem' }}>₹100</h2>
-                          <div className="small text-muted font-monospace mt-1">+ 5% GST (₹5)</div>
-                          <hr className="my-3 opacity-10" />
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="badge text-white fw-800 rounded-pill px-3 py-2" style={{ fontSize: '0.82rem', letterSpacing: '0.03em', background: '#0d6efd' }}>
-                              +90 Points
+                          
+                          <div className="plan-header-info">
+                            <div className="fw-800 small uppercase mb-2 tracking-wider plan-title" style={{ fontSize: '0.75rem', color: '#0d6efd' }}>BASIC STARTER</div>
+                            <div className="plan-badge-container">
+                              <div className="badge text-white fw-800 rounded-pill px-3 py-2" style={{ fontSize: '0.82rem', letterSpacing: '0.03em', background: '#0d6efd' }}>
+                                +90 Tokens
+                              </div>
                             </div>
+                          </div>
+                          
+                          <div className="plan-price-info">
+                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: '#0a2540', fontSize: '2rem' }}>₹100</h2>
+                            <div className="small text-muted font-monospace mt-1 plan-gst">+ 5% GST (₹5)</div>
+                          </div>
+                          
+                          <hr className="my-3 opacity-10" />
+                          <div className="d-flex flex-column align-items-center gap-2 plan-features-info">
                             <span className="small text-muted fw-600"><i className="bi bi-check2-circle me-1" style={{ color: '#0d6efd' }}></i>Accept 9 Jobs</span>
                           </div>
                         </div>
                       </div>
-
+ 
                       {/* Standard Plan (Popular) */}
-                      <div className="col-md-4">
+                      <div className="col-md-4 subscription-modal-col">
                         <div 
-                          className="card rounded-24 p-4 text-center h-100 cursor-pointer position-relative animate-scale-up"
+                          className="card rounded-24 p-4 text-center h-100 cursor-pointer position-relative animate-scale-up subscription-card"
                           onClick={() => setSelectedPlan('standard')}
                           style={{
                             cursor: 'pointer',
@@ -2135,27 +2402,36 @@ const WorkerDashboard = () => {
                             transform: selectedPlan === 'standard' ? 'translateY(-6px)' : 'none',
                           }}
                         >
-                          <span className="position-absolute top-0 start-50 translate-middle badge rounded-pill fw-800 px-3 py-2 text-dark shadow-sm" style={{ fontSize: '0.72rem', background: '#f5a623', letterSpacing: '0.05em', top: '-2px' }}>MOST POPULAR</span>
-                          <div className="fw-800 small uppercase mb-2 tracking-wider" style={{ fontSize: '0.75rem', color: '#f5a623' }}>STANDARD GROW</div>
-                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: '#f5a623', background: 'rgba(245, 166, 35, 0.1)' }}>
+                          <span className="position-absolute top-0 start-50 translate-middle badge rounded-pill fw-800 px-3 py-2 text-dark shadow-sm popular-badge" style={{ fontSize: '0.72rem', background: '#f5a623', letterSpacing: '0.05em', top: '-2px' }}>MOST POPULAR</span>
+                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3 plan-icon-container" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: '#f5a623', background: 'rgba(245, 166, 35, 0.1)' }}>
                             <i className="bi bi-shield-fill-check"></i>
                           </div>
-                          <h2 className="fw-900 mt-1 mb-0" style={{ color: '#0a2540', fontSize: '2rem' }}>₹200</h2>
-                          <div className="small text-muted font-monospace mt-1">+ 5% GST (₹10)</div>
-                          <hr className="my-3 opacity-10" />
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="badge text-dark fw-800 rounded-pill px-3 py-2" style={{ fontSize: '0.82rem', letterSpacing: '0.03em', background: '#f5a623' }}>
-                              +190 Points
+                          
+                          <div className="plan-header-info">
+                            <div className="fw-800 small uppercase mb-2 tracking-wider plan-title" style={{ fontSize: '0.75rem', color: '#f5a623' }}>STANDARD GROW</div>
+                            <div className="plan-badge-container">
+                              <div className="badge text-dark fw-800 rounded-pill px-3 py-2" style={{ fontSize: '0.82rem', letterSpacing: '0.03em', background: '#f5a623' }}>
+                                +190 Tokens
+                              </div>
                             </div>
+                          </div>
+                          
+                          <div className="plan-price-info">
+                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: '#0a2540', fontSize: '2rem' }}>₹200</h2>
+                            <div className="small text-muted font-monospace mt-1 plan-gst">+ 5% GST (₹10)</div>
+                          </div>
+                          
+                          <hr className="my-3 opacity-10" />
+                          <div className="d-flex flex-column align-items-center gap-2 plan-features-info">
                             <span className="small text-muted fw-600"><i className="bi bi-check2-circle me-1" style={{ color: '#f5a623' }}></i>Accept 19 Jobs</span>
                           </div>
                         </div>
                       </div>
-
+ 
                       {/* Premium Plan */}
-                      <div className="col-md-4">
+                      <div className="col-md-4 subscription-modal-col">
                         <div 
-                          className="card rounded-24 p-4 text-center h-100 cursor-pointer position-relative animate-scale-up"
+                          className="card rounded-24 p-4 text-center h-100 cursor-pointer position-relative animate-scale-up subscription-card"
                           onClick={() => setSelectedPlan('premium')}
                           style={{
                             cursor: 'pointer',
@@ -2166,17 +2442,26 @@ const WorkerDashboard = () => {
                             transform: selectedPlan === 'premium' ? 'translateY(-6px)' : 'none',
                           }}
                         >
-                          <div className="fw-800 small uppercase mb-2 tracking-wider" style={{ fontSize: '0.75rem', color: '#0a2540' }}>PREMIUM ELITE</div>
-                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: '#0a2540', background: 'rgba(10, 37, 64, 0.1)' }}>
+                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3 plan-icon-container" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: '#0a2540', background: 'rgba(10, 37, 64, 0.1)' }}>
                             <i className="bi bi-crown-fill"></i>
                           </div>
-                          <h2 className="fw-900 mt-1 mb-0" style={{ color: '#0a2540', fontSize: '2rem' }}>₹500</h2>
-                          <div className="small text-muted font-monospace mt-1">+ 5% GST (₹25)</div>
-                          <hr className="my-3 opacity-10" />
-                          <div className="d-flex flex-column align-items-center gap-2">
-                            <div className="badge text-white fw-800 rounded-pill px-3 py-2" style={{ fontSize: '0.82rem', letterSpacing: '0.03em', background: '#0a2540' }}>
-                              +460 Points
+                          
+                          <div className="plan-header-info">
+                            <div className="fw-800 small uppercase mb-2 tracking-wider plan-title" style={{ fontSize: '0.75rem', color: '#0a2540' }}>PREMIUM ELITE</div>
+                            <div className="plan-badge-container">
+                              <div className="badge text-white fw-800 rounded-pill px-3 py-2" style={{ fontSize: '0.82rem', letterSpacing: '0.03em', background: '#0a2540' }}>
+                                +460 Tokens
+                              </div>
                             </div>
+                          </div>
+                          
+                          <div className="plan-price-info">
+                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: '#0a2540', fontSize: '2rem' }}>₹500</h2>
+                            <div className="small text-muted font-monospace mt-1 plan-gst">+ 5% GST (₹25)</div>
+                          </div>
+                          
+                          <hr className="my-3 opacity-10" />
+                          <div className="d-flex flex-column align-items-center gap-2 plan-features-info">
                             <span className="small text-muted fw-600"><i className="bi bi-check2-circle me-1" style={{ color: '#0a2540' }}></i>Accept 46 Jobs</span>
                           </div>
                         </div>
@@ -2356,7 +2641,7 @@ const WorkerDashboard = () => {
                           <button
                             type="button"
                             className="btn btn-warning px-3 py-2 fw-bold text-dark border-0 rounded-12"
-                            onClick={() => handleRechargePointsWithWallet(selectedPlan)}
+                            onClick={() => handleRechargeTokensWithWallet(selectedPlan)}
                             disabled={isPayingWithWallet || walletBalance < (selectedPlan === 'basic' ? 99 : selectedPlan === 'standard' ? 199 : 499)}
                             style={{ fontSize: '0.85rem' }}
                           >
@@ -2379,7 +2664,7 @@ const WorkerDashboard = () => {
                     )}
 
                     {/* Receipt Breakdown & Simulate Payment */}
-                    <div className="p-4 rounded-24 border mb-4" style={{
+                    <div className="p-4 rounded-24 border mb-4 order-invoice-card" style={{
                       background: '#f8fafc',
                       border: '1px solid #e2e8f0',
                       boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)'
@@ -2396,8 +2681,8 @@ const WorkerDashboard = () => {
                         <strong className="text-dark fw-700">{selectedPlan.toUpperCase()} Premium</strong>
                       </div>
                       <div className="d-flex justify-content-between py-2 border-bottom border-dashed text-muted" style={{ fontSize: '0.88rem' }}>
-                        <span>Points Pack Added:</span>
-                        <strong className="text-dark fw-700">+{selectedPlan === 'basic' ? '90' : selectedPlan === 'standard' ? '190' : '460'} PTS</strong>
+                        <span>Tokens Pack Added:</span>
+                        <strong className="text-dark fw-700">+{selectedPlan === 'basic' ? '90' : selectedPlan === 'standard' ? '190' : '460'} TKN</strong>
                       </div>
                       <div className="d-flex justify-content-between py-2 border-bottom border-dashed text-muted" style={{ fontSize: '0.88rem' }}>
                         <span>Subtotal Net Price:</span>
@@ -2419,7 +2704,7 @@ const WorkerDashboard = () => {
                       </div>
                     </div>
 
-                    <div className="d-flex gap-3">
+                    <div className="d-flex gap-3 checkout-actions-row">
                       <button
                         type="button"
                         className="btn btn-outline-secondary flex-fill rounded-16 py-3 fw-bold transition-all"
@@ -3080,17 +3365,86 @@ const WorkerDashboard = () => {
                 <h5 className="modal-title fw-800 m-0">🚨 Emergency SOS safety system</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowSosModal(false)}></button>
               </div>
-              <div className="modal-body px-4 py-4 text-center">
-                <div className="bg-danger bg-opacity-10 text-danger p-3 rounded-circle mb-3 mx-auto" style={{ width: '80px', height: '80px', display: 'flex', alignItems: 'center', justifycontent: 'center', fontSize: '2.5rem' }}>
-                  🚨
+              <div className="modal-body px-4 py-4">
+                <div className="text-center">
+                  <div className="bg-danger bg-opacity-10 text-danger p-3 rounded-circle mb-3 mx-auto" style={{ width: '80px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem' }}>
+                    🚨
+                  </div>
+                  <h5 className="fw-800 text-danger mb-2">Are you in immediate danger?</h5>
+                  <p className="text-muted small mb-4">
+                    Triggering the SOS alert will instantly transmit your live GPS coordinates to the QuickLabour Administrator desk, notify regional authorities, and alert emergency contacts.
+                  </p>
                 </div>
-                <h5 className="fw-800 text-danger mb-2">Are you in immediate danger?</h5>
-                <p className="text-muted small mb-4">
-                  Triggering the SOS alert will instantly transmit your live GPS coordinates to the QuickLabour Administrator desk, notify regional authorities, and alert emergency contacts.
-                </p>
+
+                {!sosAlertTriggered && (
+                  <>
+                    {activeHiredJobs.length > 1 ? (
+                      <div className="mb-3 text-start">
+                        <label className="form-label small fw-700 text-muted">Select Active Job</label>
+                        <select
+                          className="form-select rounded-12"
+                          value={sosJobId}
+                          onChange={(e) => setSosJobId(e.target.value)}
+                          required
+                        >
+                          <option value="">-- Choose Job --</option>
+                          {activeHiredJobs.map((job) => (
+                            <option key={job._id} value={job._id}>{job.title} (₹{job.money})</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : activeHiredJobs.length === 1 ? (
+                      <div className="mb-3 text-start p-3 bg-light rounded-12 border">
+                        <span className="small text-muted d-block fw-700">Active Job:</span>
+                        <strong className="text-dark">{activeHiredJobs[0].title} (₹{activeHiredJobs[0].money})</strong>
+                      </div>
+                    ) : null}
+
+                    <div className="mb-3 text-start">
+                      <label className="form-label small fw-700 text-muted">Type of Problem / Emergency</label>
+                      <select
+                        className="form-select rounded-12"
+                        value={sosEmergencyType}
+                        onChange={(e) => setSosEmergencyType(e.target.value)}
+                        required
+                      >
+                        <option value="Physical Danger/Threat">⚠️ Physical Danger / Threat</option>
+                        <option value="Medical Emergency">🚑 Medical Emergency</option>
+                        <option value="Accident/Injury">🤕 Accident / Injury</option>
+                        <option value="Client Harassment">🚫 Client Harassment</option>
+                        <option value="Other">❓ Other</option>
+                      </select>
+                    </div>
+
+                    <div className="mb-4 text-start">
+                      <label className="form-label small fw-700 text-muted">Provide details of the emergency</label>
+                      <textarea
+                        rows="3"
+                        className="form-control rounded-12"
+                        placeholder="Briefly describe what is happening..."
+                        value={sosCustomDescription}
+                        onChange={(e) => setSosCustomDescription(e.target.value)}
+                        required
+                      ></textarea>
+                    </div>
+
+                    <div className="mb-4 form-check text-start">
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        id="claimRefundCheckbox"
+                        checked={claimRefund}
+                        onChange={(e) => setClaimRefund(e.target.checked)}
+                      />
+                      <label className="form-check-label small fw-700 text-muted" htmlFor="claimRefundCheckbox">
+                        Claim 50% subscription token refund for this emergency
+                      </label>
+                    </div>
+                  </>
+                )}
 
                 {sosAlertTriggered ? (
-                  <div className="alert alert-danger py-3 fw-bold animate-pulse">
+                  <div className="alert alert-danger py-3 fw-bold text-center animate-pulse">
                     📡 TRANSMITTING GPS COORDINATES & ALERTS...
                   </div>
                 ) : (
@@ -3119,25 +3473,57 @@ const WorkerDashboard = () => {
               </div>
               <div className="modal-body px-4 py-4">
                 <p className="text-muted small mb-3">
-                  If the client is not present at the location or responding to calls, upload a selfie at the location to claim the <strong>₹50 visit compensation</strong> from the client's wallet.
+                  If the client is not present at the location or responding to calls, upload your photo proof and a call history screenshot to claim the <strong>₹50 visit compensation</strong>.
                 </p>
 
                 <div className="mb-3">
-                  <label className="form-label small fw-700 text-muted">1. Upload Selfie Proof at Location</label>
+                  <label className="form-label small fw-700 text-muted">1. Upload Selfie/Photo Proof at Location</label>
                   <input
                     type="file"
                     className="form-control rounded-12"
-                    onChange={(e) => setSelfieProof(URL.createObjectURL(e.target.files[0]))}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setSelfieProof(reader.result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
                     accept="image/*"
                     required
                   />
                   {selfieProof && (
-                    <img src={selfieProof} alt="Selfie preview" className="img-thumbnail mt-2 rounded-12" style={{ maxHeight: '150px' }} />
+                    <img src={selfieProof} alt="Selfie preview" className="img-thumbnail mt-2 rounded-12" style={{ maxHeight: '100px' }} />
                   )}
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label small fw-700 text-muted">2. GPS Coordinates Autodetected</label>
+                  <label className="form-label small fw-700 text-muted">2. Upload Call Log Screenshot</label>
+                  <input
+                    type="file"
+                    className="form-control rounded-12"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setNoShowCallLog(reader.result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    accept="image/*"
+                    required
+                  />
+                  {noShowCallLog && (
+                    <img src={noShowCallLog} alt="Call log preview" className="img-thumbnail mt-2 rounded-12" style={{ maxHeight: '100px' }} />
+                  )}
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label small fw-700 text-muted">3. GPS Coordinates Autodetected</label>
                   <div className="p-3 bg-light rounded-12 border font-monospace small">
                     🗺️ Lat: {workerLat || '19.0760'}° N, Lng: {workerLng || '72.8777'}° E
                   </div>
@@ -3145,7 +3531,7 @@ const WorkerDashboard = () => {
               </div>
               <div className="modal-footer px-4 py-3 bg-light border-0 d-flex gap-2">
                 <button type="button" className="btn btn-outline-secondary flex-fill rounded-12 fw-bold" onClick={() => setShowNoShowModal(false)}>Cancel</button>
-                <button type="button" className="btn btn-danger flex-fill rounded-12 fw-bold" style={{ background: '#ef4444', border: 'none' }} onClick={handleSubmitNoShowClaim}>Claim ₹50 Compensation</button>
+                <button type="button" className="btn btn-danger flex-fill rounded-12 fw-bold" style={{ background: '#ef4444', border: 'none' }} onClick={handleSubmitNoShowClaim}>Submit to Admin</button>
               </div>
             </div>
           </div>
@@ -3183,7 +3569,16 @@ const WorkerDashboard = () => {
                   <input
                     type="file"
                     className="form-control rounded-12"
-                    onChange={(e) => setDisputePhoto(URL.createObjectURL(e.target.files[0]))}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setDisputePhoto(reader.result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
                     accept="image/*"
                   />
                   {disputePhoto && (
@@ -3196,7 +3591,16 @@ const WorkerDashboard = () => {
                   <input
                     type="file"
                     className="form-control rounded-12"
-                    onChange={(e) => setDisputeCallLog(URL.createObjectURL(e.target.files[0]))}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setDisputeCallLog(reader.result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
                     accept="image/*"
                   />
                   {disputeCallLog && (

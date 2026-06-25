@@ -1,6 +1,7 @@
 import express from 'express';
 import Stripe from 'stripe';
 import User from '../models/User.js';
+import Admin from '../models/Admin.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -15,7 +16,7 @@ const PLAN_PRICES = {
   premium: 499 * 100,   // ₹499.00 in paise
 };
 
-const PLAN_POINTS = {
+const PLAN_TOKENS = {
   basic: 90,
   standard: 190,
   premium: 460,
@@ -28,7 +29,7 @@ router.post('/create-intent', protect, async (req, res) => {
   const { planType } = req.body;
 
   if (req.user.role !== 'worker') {
-    return res.status(403).json({ message: 'Only registered workers can purchase point subscriptions.' });
+    return res.status(403).json({ message: 'Only registered workers can purchase token subscriptions.' });
   }
 
   if (!PLAN_PRICES[planType]) {
@@ -66,7 +67,7 @@ router.post('/create-intent', protect, async (req, res) => {
   }
 });
 
-// @desc    Verify Stripe Payment and Credit Points to Worker
+// @desc    Verify Stripe Payment and Credit Tokens to Worker
 // @route   POST /api/payments/verify-and-credit
 // @access  Private (Worker only)
 router.post('/verify-and-credit', protect, async (req, res) => {
@@ -76,8 +77,8 @@ router.post('/verify-and-credit', protect, async (req, res) => {
     return res.status(403).json({ message: 'Only registered workers can complete checkouts.' });
   }
 
-  const pointsToAdd = PLAN_POINTS[planType];
-  if (!pointsToAdd) {
+  const tokensToAdd = PLAN_TOKENS[planType];
+  if (!tokensToAdd) {
     return res.status(400).json({ message: 'Invalid subscription plan.' });
   }
 
@@ -91,21 +92,17 @@ router.post('/verify-and-credit', protect, async (req, res) => {
 
     if (isSimulated) {
       // Process secure mock validation in developer sandboxes
-      worker.points = (worker.points || 0) + pointsToAdd;
+      worker.tokens = (worker.tokens || 0) + tokensToAdd;
       await worker.save();
 
       // Automatically add subscription money to Admin wallet
-      const admin = await User.findOne({ role: 'admin' });
-      if (admin) {
-        admin.walletBalance = (admin.walletBalance || 0) + cost;
-        await admin.save();
-      }
+      await Admin.updateMany({}, { $inc: { walletBalance: cost } });
 
       return res.json({
         success: true,
         message: `Successfully processed mock gateway transaction! Subscribed to ${planType} plan.`,
-        pointsAdded: pointsToAdd,
-        updatedPoints: worker.points,
+        tokensAdded: tokensToAdd,
+        updatedTokens: worker.tokens,
         user: worker
       });
     }
@@ -117,20 +114,16 @@ router.post('/verify-and-credit', protect, async (req, res) => {
       return res.status(400).json({ message: 'Payment authorization is incomplete.' });
     }
 
-    // Protect against double points crediting
+    // Protect against double tokens crediting
     if (paymentIntent.metadata.credited === 'true') {
       return res.status(400).json({ message: 'This checkout has already been credited.' });
     }
 
-    worker.points = (worker.points || 0) + pointsToAdd;
+    worker.tokens = (worker.tokens || 0) + tokensToAdd;
     await worker.save();
 
     // Automatically add subscription money to Admin wallet
-    const admin = await User.findOne({ role: 'admin' });
-    if (admin) {
-      admin.walletBalance = (admin.walletBalance || 0) + cost;
-      await admin.save();
-    }
+    await Admin.updateMany({}, { $inc: { walletBalance: cost } });
 
     // Mark Stripe Intent as processed in metadata
     await stripe.paymentIntents.update(intentId, {
@@ -140,8 +133,8 @@ router.post('/verify-and-credit', protect, async (req, res) => {
     res.json({
       success: true,
       message: `Successfully confirmed Stripe transaction! Subscribed to ${planType} plan.`,
-      pointsAdded: pointsToAdd,
-      updatedPoints: worker.points,
+      tokensAdded: tokensToAdd,
+      updatedTokens: worker.tokens,
       user: worker
     });
   } catch (error) {

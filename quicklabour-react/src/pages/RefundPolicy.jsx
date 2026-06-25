@@ -32,7 +32,7 @@ const RefundPolicy = () => {
                   <strong>By Clients:</strong> Clients can cancel a job request at any time before a worker accepts or arrives at the job location. If a cancellation is made after a worker has accepted and commenced travel to the location, a nominal travel convenience fee may be deducted from the client's wallet and compensated to the worker.
                 </p>
                 <p>
-                  <strong>By Workers:</strong> Workers are expected to accept jobs only when they are fully available. Repeated cancellations by workers post-acceptance will trigger a system review and may result in penalties, points deduction, or temporary profile suspension.
+                  <strong>By Workers:</strong> Workers are expected to accept jobs only when they are fully available. Repeated cancellations by workers post-acceptance will trigger a system review and may result in penalties, tokens deduction, or temporary profile suspension.
                 </p>
 
                 <h3 className="fw-700 mt-4 mb-3" style={{ color: '#0a2540', fontSize: '1.4rem' }}>2. Refund Eligibility & Wallet Top-ups</h3>
@@ -41,7 +41,7 @@ const RefundPolicy = () => {
                 </p>
                 <ul className="ps-3 mb-4" style={{ listStyleType: 'disc' }}>
                   <li><strong>Failed Wallet Transactions:</strong> If money is deducted from your bank account/card but does not reflect in your QuickLabour wallet, the amount will be automatically refunded by your payment gateway within 5-7 working days.</li>
-                  <li><strong>Wallet Balances withdrawal:</strong> Wallet balances obtained through promotional offers or reward points are non-refundable and non-withdrawable. Direct deposits can be requested for refund back to the source account under verified disputes, subject to processing fees.</li>
+                  <li><strong>Wallet Balances withdrawal:</strong> Wallet balances obtained through promotional offers or reward tokens are non-refundable and non-withdrawable. Direct deposits can be requested for refund back to the source account under verified disputes, subject to processing fees.</li>
                 </ul>
 
                 <h3 className="fw-700 mt-4 mb-3" style={{ color: '#0a2540', fontSize: '1.4rem' }}>3. Dispute Resolution & Wage Holdbacks</h3>
@@ -55,9 +55,9 @@ const RefundPolicy = () => {
                   <li>If the worker is found to have completed the service according to the job agreement, the agreed wages will be transferred to the worker's wallet.</li>
                 </ul>
 
-                <h3 className="fw-700 mt-4 mb-3" style={{ color: '#0a2540', fontSize: '1.4rem' }}>4. Point Purchases</h3>
+                <h3 className="fw-700 mt-4 mb-3" style={{ color: '#0a2540', fontSize: '1.4rem' }}>4. Token Purchases</h3>
                 <p>
-                  Points purchased by workers/labours to apply for jobs or boost profiles are strictly non-refundable once utilized. Unused points purchased within 48 hours can be reviewed for refunds upon request, provided no jobs were bid on or accepted during that period.
+                  Tokens purchased by workers/labours to apply for jobs or boost profiles are strictly non-refundable once utilized. Unused tokens purchased within 48 hours can be reviewed for refunds upon request, provided no jobs were bid on or accepted during that period.
                 </p>
 
                 <h3 className="fw-700 mt-4 mb-3" style={{ color: '#0a2540', fontSize: '1.4rem' }}>5. Contact Support</h3>

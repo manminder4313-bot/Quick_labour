@@ -73,7 +73,7 @@ const labourSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    points: {
+    tokens: {
       type: Number,
       default: 20,
     },
@@ -90,6 +90,30 @@ const labourSchema = new mongoose.Schema(
       default: null,
     },
     withdrawalOtpExpires: {
+      type: Date,
+      default: null,
+    },
+    resetPasswordOtp: {
+      type: String,
+      default: null,
+    },
+    resetPasswordOtpExpires: {
+      type: Date,
+      default: null,
+    },
+    policyViolations: {
+      type: Number,
+      default: 0,
+    },
+    warnings: {
+      type: [String],
+      default: [],
+    },
+    isSuspended: {
+      type: Boolean,
+      default: false,
+    },
+    suspendedUntil: {
       type: Date,
       default: null,
     },
