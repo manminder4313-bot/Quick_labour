@@ -2,73 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 
-
-const initialReviews = [
-  {
-    name: 'Rahul Mehta',
-    sub: 'Home Owner, Ludhiana',
-    text: 'Found an electrician within 20 minutes of posting. He was professional, did excellent work, and charged exactly what was quoted. QuickLabour is a game changer!',
-    avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-    rating: 5,
-    workerType: 'Electrician',
-    date: 'May 18, 2026'
-  },
-  {
-    name: 'Karan Malhotra',
-    sub: 'Villa Owner, Amritsar',
-    text: 'Hired a painter to paint our living room. Extremely neat, finished ahead of schedule, and used high-quality paints. Highly recommended!',
-    avatar: 'https://randomuser.me/api/portraits/men/84.jpg',
-    rating: 5,
-    workerType: 'Painter',
-    date: 'May 15, 2026'
-  },
-  {
-    name: 'Balwinder Singh',
-    sub: 'Professional Plumber, Amritsar',
-    text: 'As a plumber, QuickLabour helped me find steady work every day. My income has doubled. The app is easy to use and payments are always on time.',
-    avatar: 'https://randomuser.me/api/portraits/men/45.jpg',
-    rating: 5,
-    workerType: 'Plumber',
-    date: 'May 12, 2026'
-  },
-  {
-    name: 'Priya Arora',
-    sub: 'Factory Manager, Chandigarh',
-    text: 'Managing our factory maintenance is now so smooth. We hire 10–15 workers weekly through QuickLabour. Verified profiles save us so much vetting time.',
-    avatar: 'https://randomuser.me/api/portraits/women/68.jpg',
-    rating: 4.5,
-    workerType: 'General Labour',
-    date: 'May 10, 2026'
-  },
-  {
-    name: 'Aisha Sen',
-    sub: 'Apartment Tenant, Chandigarh',
-    text: 'Booked a carpentry service for custom bookshelf installation. The craftsmanship is outstanding, very precise work!',
-    avatar: 'https://randomuser.me/api/portraits/women/33.jpg',
-    rating: 5,
-    workerType: 'Carpenter',
-    date: 'May 05, 2026'
-  },
-  {
-    name: 'Vikram Rathore',
-    sub: 'Contractor, Ludhiana',
-    text: 'Needed 5 concrete masons on short notice for a site extension. Found top-tier skilled professionals within an hour. Saved our project timeline!',
-    avatar: 'https://randomuser.me/api/portraits/men/22.jpg',
-    rating: 5,
-    workerType: 'Mason / Concrete Worker',
-    date: 'May 02, 2026'
-  },
-  {
-    name: 'Shalini Sharma',
-    sub: 'Residential Complex, Amritsar',
-    text: 'Extremely professional deep cleaning service. They cleaned the entire 3 BHK apartment thoroughly. Every corner was spotless!',
-    avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
-    rating: 4.8,
-    workerType: 'Cleaning Specialist',
-    date: 'April 28, 2026'
-  }
-];
-
 const workerCategories = [
   'All',
   'Plumber',
@@ -183,7 +116,7 @@ const Reviews = () => {
       </section>
 
       {/* FILTER BAR & REVIEW GRID */}
-      <section className="py-5" style={{ background: '#f8f9fb' }}>
+      <section className="py-5" style={{ background: 'var(--bg-app)', transition: 'background-color 0.3s ease' }}>
         <div className="container">
           <div className="row g-4">
             
@@ -191,19 +124,22 @@ const Reviews = () => {
             <div className="col-lg-4">
               
               {/* FILTER CARD */}
-              <div className="card border-0 shadow-sm p-4 mb-4" style={{ borderRadius: '20px' }}>
-                <h5 className="fw-800 text-dark mb-3"><i className="bi bi-funnel text-primary me-2"></i>Filter by Worker Specialty</h5>
+              <div className="card border-0 shadow-sm p-4 mb-4" style={{ borderRadius: '20px', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                <h5 className="fw-800 mb-3" style={{ color: 'var(--text-main)' }}>
+                  <i className="bi bi-funnel text-primary me-2"></i>Filter by Worker Specialty
+                </h5>
                 <div className="d-flex flex-column gap-2">
                   {workerCategories.map((cat, index) => (
                     <button
                       key={index}
                       onClick={() => setSelectedFilter(cat)}
-                      className={`btn text-start px-3 py-2.5 rounded-12 fw-700 transition-all border-0 d-flex justify-content-between align-items-center ${
-                        selectedFilter === cat 
-                          ? 'bg-primary text-white shadow-sm' 
-                          : 'bg-light text-muted hover-bg-gray'
-                      }`}
-                      style={{ fontSize: '0.92rem' }}
+                      className="btn text-start px-3 py-2.5 rounded-12 fw-700 transition-all border-0 d-flex justify-content-between align-items-center"
+                      style={{ 
+                        fontSize: '0.92rem',
+                        background: selectedFilter === cat ? '#0d6efd' : 'var(--bg-app)',
+                        color: selectedFilter === cat ? '#ffffff' : 'var(--text-muted)',
+                        border: selectedFilter === cat ? 'none' : '1px solid var(--border-color)'
+                      }}
                     >
                       <span>{cat}</span>
                       {selectedFilter === cat && <i className="bi bi-check-circle-fill"></i>}
@@ -213,15 +149,17 @@ const Reviews = () => {
               </div>
 
               {/* LEAVE A REVIEW FORM */}
-              <div className="card border-0 shadow-sm p-4" style={{ borderRadius: '20px' }}>
-                <h5 className="fw-800 text-dark mb-1"><i className="bi bi-pencil-square text-primary me-2"></i>Share Your Experience</h5>
-                <p className="text-muted mb-3" style={{ fontSize: '0.85rem' }}>Did you hire a worker recently? Let others know how they did.</p>
+              <div className="card border-0 shadow-sm p-4" style={{ borderRadius: '20px', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                <h5 className="fw-800 mb-1" style={{ color: 'var(--text-main)' }}>
+                  <i className="bi bi-pencil-square text-primary me-2"></i>Share Your Experience
+                </h5>
+                <p className="text-muted mb-3" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Did you hire a worker recently? Let others know how they did.</p>
 
                 {!isLoggedIn ? (
-                  <div className="text-center py-4 px-2 bg-light rounded-16 border border-dashed mt-2">
-                    <i className="bi bi-shield-lock-fill text-muted" style={{ fontSize: '2.5rem' }}></i>
-                    <h6 className="fw-800 text-dark mt-2">Login Required</h6>
-                    <p className="text-muted mb-3 px-3 animate-fade-in" style={{ fontSize: '0.82rem' }}>You must be logged in as a Client or Worker to share your experience with the community.</p>
+                  <div className="text-center py-4 px-2 rounded-16 border border-dashed mt-2" style={{ background: 'var(--bg-app)', borderColor: 'var(--border-color)' }}>
+                    <i className="bi bi-shield-lock-fill text-muted" style={{ fontSize: '2.5rem', color: 'var(--text-muted)' }}></i>
+                    <h6 className="fw-800 mt-2" style={{ color: 'var(--text-main)' }}>Login Required</h6>
+                    <p className="text-muted mb-3 px-3 animate-fade-in" style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>You must be logged in as a Client or Worker to share your experience with the community.</p>
                     <Link to="/login" className="btn btn-primary btn-sm px-4 py-2 fw-700 rounded-pill shadow-sm" style={{ fontSize: '0.82rem' }}>
                       <i className="bi bi-box-arrow-in-right me-1"></i> Login / Sign Up
                     </Link>
@@ -229,37 +167,37 @@ const Reviews = () => {
                 ) : (
                   <form onSubmit={handleSubmitReview}>
                     <div className="mb-3">
-                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem' }}>Your Name</label>
+                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Your Name</label>
                       <input
                         type="text"
-                        className="form-control border-1.5 rounded-12 bg-light"
+                        className="form-control border-1.5 rounded-12"
                         placeholder="e.g. Amit Kumar"
                         value={newName}
                         disabled
-                        style={{ height: '45px', fontSize: '0.9rem', cursor: 'not-allowed' }}
+                        style={{ height: '45px', fontSize: '0.9rem', cursor: 'not-allowed', background: 'var(--bg-app)', color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}
                       />
-                      <small className="text-muted" style={{ fontSize: '0.72rem' }}>Automatically filled from your profile</small>
+                      <small className="text-muted" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Automatically filled from your profile</small>
                     </div>
 
                     <div className="mb-3">
-                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem' }}>Your Role / Location</label>
+                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Your Role / Location</label>
                       <input
                         type="text"
-                        className="form-control border-1.5 rounded-12 bg-light"
+                        className="form-control border-1.5 rounded-12"
                         placeholder="e.g. Home Owner, Ludhiana"
                         value={newSub}
                         disabled
-                        style={{ height: '45px', fontSize: '0.9rem', cursor: 'not-allowed' }}
+                        style={{ height: '45px', fontSize: '0.9rem', cursor: 'not-allowed', background: 'var(--bg-app)', color: 'var(--text-muted)', borderColor: 'var(--border-color)' }}
                       />
                     </div>
 
                     <div className="mb-3">
-                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem' }}>Which Worker Specialty Did You Hire?</label>
+                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Which Worker Specialty Did You Hire?</label>
                       <select
                         className="form-select border-1.5 rounded-12"
                         value={newWorkerType}
                         onChange={(e) => setNewWorkerType(e.target.value)}
-                        style={{ height: '45px', fontSize: '0.9rem' }}
+                        style={{ height: '45px', fontSize: '0.9rem', background: 'var(--card-bg)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }}
                       >
                         <option value="Plumber">Plumbing Specialist</option>
                         <option value="Painter">Painter / Decorator</option>
@@ -272,12 +210,12 @@ const Reviews = () => {
                     </div>
 
                     <div className="mb-3">
-                      <label className="form-label fw-600 text-muted d-block mb-1" style={{ fontSize: '0.85rem' }}>Rating</label>
+                      <label className="form-label fw-600 text-muted d-block mb-1" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Rating</label>
                       <select
                         className="form-select border-1.5 rounded-12"
                         value={newRating}
                         onChange={(e) => setNewRating(e.target.value)}
-                        style={{ height: '45px', fontSize: '0.9rem' }}
+                        style={{ height: '45px', fontSize: '0.9rem', background: 'var(--card-bg)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }}
                       >
                         <option value="5">5 Stars (Excellent)</option>
                         <option value="4">4 Stars (Good)</option>
@@ -288,7 +226,7 @@ const Reviews = () => {
                     </div>
 
                     <div className="mb-3">
-                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem' }}>Your Review</label>
+                      <label className="form-label fw-600 text-muted" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Your Review</label>
                       <textarea
                         className="form-control border-1.5 rounded-12"
                         rows="3"
@@ -296,7 +234,7 @@ const Reviews = () => {
                         value={newText}
                         onChange={(e) => setNewText(e.target.value)}
                         required
-                        style={{ fontSize: '0.9rem' }}
+                        style={{ fontSize: '0.9rem', background: 'var(--card-bg)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }}
                       ></textarea>
                     </div>
 
@@ -312,34 +250,34 @@ const Reviews = () => {
             {/* RIGHT COLUMN: REVIEWS CONTAINER */}
             <div className="col-lg-8">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <span className="text-muted fw-600" style={{ fontSize: '0.95rem' }}>
-                  Showing {filteredReviews.length} reviews for <strong className="text-dark">"{selectedFilter}"</strong>
+                <span className="text-muted fw-600" style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>
+                  Showing {filteredReviews.length} reviews for <strong style={{ color: 'var(--text-main)' }}>"{selectedFilter}"</strong>
                 </span>
               </div>
 
               {filteredReviews.length === 0 ? (
-                <div className="text-center bg-white p-5 rounded-20 shadow-sm border border-opacity-10 border-light">
-                  <i className="bi bi-journal-x text-muted" style={{ fontSize: '3.5rem' }}></i>
-                  <h5 className="fw-800 text-dark mt-3">No reviews found</h5>
-                  <p className="text-muted mb-0">Be the first to share your experience with a {selectedFilter}!</p>
+                <div className="text-center p-5 rounded-20 shadow-sm border" style={{ background: 'var(--card-bg)', borderColor: 'var(--card-border)' }}>
+                  <i className="bi bi-journal-x text-muted" style={{ fontSize: '3.5rem', color: 'var(--text-muted)' }}></i>
+                  <h5 className="fw-800 mt-3" style={{ color: 'var(--text-main)' }}>No reviews found</h5>
+                  <p className="text-muted mb-0" style={{ color: 'var(--text-muted)' }}>Be the first to share your experience with a {selectedFilter}!</p>
                 </div>
               ) : (
                 <div className="d-flex flex-column gap-3">
                   {filteredReviews.map((testi, index) => (
-                    <div key={index} className="card border-0 shadow-sm p-4 hover-translate-up" style={{ borderRadius: '20px', transition: 'all 0.3s' }}>
+                    <div key={index} className="card border-0 shadow-sm p-4 hover-translate-up" style={{ borderRadius: '20px', transition: 'all 0.3s', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
                       <div className="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
                         <div className="d-flex align-items-center gap-3">
                           <img src={testi.avatar} alt={testi.name} className="rounded-circle border border-primary border-2" style={{ width: '48px', height: '48px', objectFit: 'cover' }} />
                           <div>
-                            <h6 className="fw-800 text-dark mb-0">{testi.name}</h6>
-                            <span className="text-muted" style={{ fontSize: '0.8rem' }}>{testi.sub}</span>
+                            <h6 className="fw-800 mb-0" style={{ color: 'var(--text-main)' }}>{testi.name}</h6>
+                            <span className="text-muted" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{testi.sub}</span>
                           </div>
                         </div>
                         <div className="text-end">
                           <span className="badge bg-primary bg-opacity-10 text-primary fw-800 px-3 py-2 rounded-pill d-inline-flex align-items-center gap-1.5" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                             <i className="bi bi-hammer text-warning"></i> {testi.workerType}
                           </span>
-                          <div className="text-muted mt-1" style={{ fontSize: '0.72rem' }}>{testi.date}</div>
+                          <div className="text-muted mt-1" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{testi.date}</div>
                         </div>
                       </div>
 
@@ -350,10 +288,10 @@ const Reviews = () => {
                           if (testi.rating >= starValue - 0.5) return <i key={i} className="bi bi-star-half me-0.5"></i>;
                           return <i key={i} className="bi bi-star me-0.5"></i>;
                         })}
-                        <span className="text-muted fw-700 ms-1" style={{ fontSize: '0.8rem' }}>({testi.rating})</span>
+                        <span className="text-muted fw-700 ms-1" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({testi.rating})</span>
                       </div>
 
-                      <p className="mb-0 text-secondary" style={{ fontStyle: 'italic', fontSize: '0.94rem', lineHeight: '1.6', color: '#4a5568' }}>
+                      <p className="mb-0 text-secondary" style={{ fontStyle: 'italic', fontSize: '0.94rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>
                         "{testi.text}"
                       </p>
                     </div>

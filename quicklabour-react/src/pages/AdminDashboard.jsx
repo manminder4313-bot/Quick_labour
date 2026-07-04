@@ -540,13 +540,13 @@ const AdminDashboard = () => {
   );
 
   return (
-    <div className="admin-dashboard-container py-5 px-3" style={{ minHeight: '90vh', background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
+    <div className="admin-dashboard-container py-5 px-3" style={{ minHeight: '90vh', background: 'var(--bg-app)' }}>
       <div className="container-fluid max-w-7xl mx-auto">
 
         {/* Header Block */}
-        <div className="glass-card p-4 mb-4 rounded-4 shadow-sm border-0 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4" style={{ background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+        <div className="glass-card p-4 mb-4 rounded-4 shadow-sm border-0 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', backdropFilter: 'blur(10px)' }}>
           <div className="d-flex flex-column flex-sm-row align-items-sm-center gap-4">
-            <div className="d-flex align-items-center gap-3 pe-sm-4 cursor-pointer" style={{ borderRight: '1px solid rgba(0,0,0,0.1)', cursor: 'pointer' }} onClick={() => setActiveTab('overview')}>
+            <div className="d-flex align-items-center gap-3 pe-sm-4 cursor-pointer" style={{ borderRight: '1px solid var(--border-color)', cursor: 'pointer' }} onClick={() => setActiveTab('overview')}>
               <div className="rounded-4 p-3 bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center" style={{ border: '1px solid rgba(40, 167, 69, 0.25)', width: '60px', height: '60px' }}>
                 <i className="bi bi-wallet2 fs-2 animate-pulse"></i>
               </div>
@@ -556,7 +556,7 @@ const AdminDashboard = () => {
               </div>
             </div>
             <div>
-              <h2 className="fw-extrabold mb-1" style={{ color: '#1a252f', letterSpacing: '-0.5px' }}>
+              <h2 className="fw-extrabold mb-1" style={{ color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
                 💼 Admin Wallet Portal
               </h2>
               <p className="text-muted mb-0">Monitor subscription revenues, track system metrics, and manage user accounts.</p>
@@ -583,7 +583,7 @@ const AdminDashboard = () => {
           <div className="row g-3 mb-4">
             {(hasPermission('clients') || hasPermission('overview')) && (
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #007bff' }}>
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderLeft: '5px solid var(--primary)', borderColor: 'var(--border-color)' }}>
                   <div className="d-flex align-items-center">
                     <div className="rounded-3 p-3 bg-primary bg-opacity-10 text-primary me-3">
                       <i className="bi bi-people-fill fs-3"></i>
@@ -598,7 +598,7 @@ const AdminDashboard = () => {
             )}
             {(hasPermission('workers') || hasPermission('overview')) && (
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #28a745' }}>
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderLeft: '5px solid var(--success)', borderColor: 'var(--border-color)' }}>
                   <div className="d-flex align-items-center">
                     <div className="rounded-3 p-3 bg-success bg-opacity-10 text-success me-3">
                       <i className="bi bi-hammer fs-3"></i>
@@ -613,7 +613,7 @@ const AdminDashboard = () => {
             )}
             {(hasPermission('jobs') || hasPermission('overview')) && (
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #fd7e14' }}>
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderLeft: '5px solid var(--warning)', borderColor: 'var(--border-color)' }}>
                   <div className="d-flex align-items-center">
                     <div className="rounded-3 p-3 bg-warning bg-opacity-10 text-warning me-3">
                       <i className="bi bi-briefcase-fill fs-3"></i>
@@ -628,7 +628,7 @@ const AdminDashboard = () => {
             )}
             {(hasPermission('contacts') || hasPermission('overview')) && (
               <div className="col-12 col-sm-6 col-lg-3">
-                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'rgba(255, 255, 255, 0.85)', borderLeft: '5px solid #dc3545' }}>
+                <div className="card border-0 shadow-sm rounded-4 p-3 h-100" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderLeft: '5px solid var(--danger)', borderColor: 'var(--border-color)' }}>
                   <div className="d-flex align-items-center">
                     <div className="rounded-3 p-3 bg-danger bg-opacity-10 text-danger me-3">
                       <i className="bi bi-envelope-exclamation-fill fs-3"></i>
@@ -645,7 +645,7 @@ const AdminDashboard = () => {
         )}
 
         {/* Tab Navigator */}
-        <div className="card border-0 shadow-sm rounded-4 p-2 mb-4" style={{ background: 'rgba(255, 255, 255, 0.85)' }}>
+        <div className="card border-0 shadow-sm rounded-4 p-2 mb-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
           <div className="nav nav-pills d-flex flex-wrap gap-1 border-0">
             {hasPermission('overview') && (
               <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'overview' ? 'active bg-primary' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('overview'); setSearchTerm(''); }}>
@@ -684,7 +684,7 @@ const AdminDashboard = () => {
             )}
             {hasPermission('disputes') && (
               <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'disputes' ? 'active bg-danger text-white' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('disputes'); setSearchTerm(''); }}>
-                ⚖️ Disputes Panel ({JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]').length})
+                ⚖️ Complain Panel ({JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]').length})
               </button>
             )}
             {hasPermission('overview') && (
@@ -706,7 +706,7 @@ const AdminDashboard = () => {
         )}
 
         {/* Tab Contents */}
-        <div className="glass-card rounded-4 p-4 shadow-sm border-0" style={{ background: 'rgba(255, 255, 255, 0.85)', minHeight: '400px' }}>
+        <div className="glass-card rounded-4 p-4 shadow-sm border-0" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', minHeight: '400px' }}>
 
           {/* TAB 1: ADMIN WALLET HUB */}
           {activeTab === 'overview' && hasPermission('overview') && (
@@ -762,7 +762,7 @@ const AdminDashboard = () => {
               {/* Sub-tab Content: Transaction History */}
               {activeWalletTab === 'history' && (
                 <div>
-                  <h5 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#0f172a' }}>
+                  <h5 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: 'var(--text-main)' }}>
                     📜 Pay & Credit Statement
                   </h5>
                   <div className="table-responsive">
@@ -835,14 +835,14 @@ const AdminDashboard = () => {
               {activeWalletTab === 'scanner' && (
                 <div className="row g-4 align-items-center">
                   <div className="col-12 col-md-5 text-center">
-                    <div className="p-4 bg-white rounded-24 border shadow-sm" style={{ border: '2px solid #e2e8f0', display: 'inline-block' }}>
+                    <div className="p-4 bg-white rounded-24 border shadow-sm" style={{ border: '2px solid var(--border-color)', display: 'inline-block' }}>
                       <img
                         src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=quicklabour@icici%26pn=QuickLabourAdmin%26cu=INR"
                         alt="Admin UPI QR Code"
                         className="img-fluid rounded-16 shadow-inner border mb-3"
                         style={{ width: '220px', height: '220px' }}
                       />
-                      <h6 className="fw-bold mb-1" style={{ color: '#0a2540' }}>Platform Merchant QR</h6>
+                      <h6 className="fw-bold mb-1" style={{ color: 'var(--text-main)' }}>Platform Merchant QR</h6>
                       <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-3 py-1 fw-bold">Active Receiving Agent</span>
                     </div>
                   </div>
@@ -1121,7 +1121,7 @@ const AdminDashboard = () => {
                             type="text"
                             maxLength="4"
                             className="form-control text-center font-monospace fw-bold fs-3"
-                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '8px' }}
+                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid var(--border-color)', borderRadius: '8px' }}
                             placeholder="••••"
                             value={withdrawOtp}
                             onChange={(e) => setWithdrawOtp(e.target.value.replace(/\D/g, ''))}
@@ -1584,7 +1584,7 @@ const AdminDashboard = () => {
           {activeTab === 'disputes' && hasPermission('disputes') && (
             <div>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="fw-bold mb-0 text-dark">⚖️ Safe Platform Disputes & Escalation Resolution Desk</h5>
+                <h5 className="fw-bold mb-0 text-dark">⚖️ Safe Platform Complains & Escalation Resolution Desk</h5>
                 <span className="badge bg-danger text-white fw-bold px-3 py-2">
                   {disputes.filter(d => d.status !== 'Resolved').length} Unresolved Cases
                 </span>
@@ -1806,7 +1806,7 @@ const AdminDashboard = () => {
                           : alert.status === 'Verified' 
                           ? 'border-start border-5 border-success' 
                           : 'border-start border-5 border-secondary'
-                      }`} style={{ background: '#ffffff' }}>
+                      }`} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
                         <div className="d-flex justify-content-between align-items-start mb-3">
                           <div className="d-flex align-items-center gap-2">
                             <span className={`badge ${
@@ -2211,10 +2211,10 @@ const AdminDashboard = () => {
                       onChange={(e) => setAdminForm({ ...adminForm, roleType: e.target.value })}
                       style={{ border: '1.5px solid #cbd5e1' }}
                     >
-                      <option value="super_admin">Super Admin (Full Access: All Tabs + Manage Admins & Disputes)</option>
+                      <option value="super_admin">Super Admin (Full Access: All Tabs + Manage Admins & Complains)</option>
                       <option value="stats_viewer">Stats Analyst (Overview & Performance Graphs Only)</option>
                       <option value="operations_manager">Operations Manager (Clients, Workers, Jobs, Reviews & Inquiries Only)</option>
-                      <option value="disputes_officer">Disputes Officer (Disputes & Escalations Desk Only)</option>
+                      <option value="disputes_officer">Complain Officer (Complains & Escalations Desk Only)</option>
                     </select>
                     <div className="form-text small text-muted mt-1" style={{ fontSize: '0.75rem' }}>
                       Determines which tabs and controls this administrator can access on the Admin Wallet Hub.
@@ -2273,9 +2273,9 @@ const AdminDashboard = () => {
 
       {/* ── Classy Custom Alert Modal ── */}
       {classyAlert.show && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '400px' }}>
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div className="mb-3">
                 {classyAlert.type === 'danger' || classyAlert.type === 'error' ? (
                   <div className="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle animate-pulse" style={{ width: '64px', height: '64px' }}>

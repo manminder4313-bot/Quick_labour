@@ -1,0 +1,404 @@
+/* SplashLoader.css */
+
+.splash-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-app);
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4vh 2rem 2vh 2rem;
+  box-sizing: border-box;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), 
+              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0.6s;
+  overflow: hidden;
+}
+
+.splash-overlay.fade-out {
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Center Content Stack */
+.splash-center-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  max-width: 480px;
+  margin: auto 0;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+/* Central SVG dimensions & responsive scaling */
+.splash-center-svg {
+  width: 100%;
+  max-width: 440px;
+  height: auto;
+  margin-bottom: 0.5rem;
+}
+
+/* Central Orbit Rings */
+.ill-orbit-core {
+  fill: rgba(245, 158, 11, 0.04);
+  stroke: #F59E0B;
+  stroke-width: 1;
+  opacity: 0.15;
+  transition: opacity 0.3s ease;
+}
+
+.dark .ill-orbit-core {
+  fill: rgba(245, 158, 11, 0.06);
+  stroke: #F59E0B;
+  opacity: 0.2;
+}
+
+.ill-orbit-ring-inner {
+  fill: none;
+  stroke: #F59E0B;
+  stroke-width: 1.2;
+  opacity: 0.35;
+  stroke-dasharray: 6 6;
+  transform-origin: 300px 180px;
+  animation: rotate-orbit-clockwise 25s linear infinite;
+}
+
+.ill-orbit-ring-outer {
+  fill: none;
+  stroke: #F59E0B;
+  stroke-width: 1;
+  opacity: 0.2;
+  stroke-dasharray: 4 12;
+  transform-origin: 300px 180px;
+  animation: rotate-orbit-counter 40s linear infinite;
+}
+
+.ill-orbit-dot {
+  fill: #F59E0B;
+  filter: drop-shadow(0 0 6px #F59E0B);
+  transform-origin: 300px 180px;
+  animation: rotate-orbit-clockwise 30s linear infinite;
+}
+
+.ill-lightning-bolt-center {
+  fill: #F59E0B;
+  filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.65));
+  animation: logo-pulse 1.8s ease-in-out infinite;
+}
+
+/* Outline Icons */
+.ill-outline-icon {
+  stroke: var(--text-muted);
+  opacity: 0.35;
+  transition: stroke 0.3s ease, opacity 0.3s ease;
+}
+
+.dark .ill-outline-icon {
+  stroke: #94A3B8;
+  opacity: 0.45;
+}
+
+/* Logo and Slogan below central SVG */
+.splash-logo-text {
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  color: var(--text-main);
+  margin-top: 0.5rem;
+}
+
+.splash-logo-text span {
+  color: #F59E0B;
+}
+
+.splash-slogan {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-top: 0.35rem;
+  opacity: 0.85;
+}
+
+/* Progress Section */
+.splash-progress-container {
+  width: 100%;
+  max-width: 320px;
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.splash-loading-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+
+.splash-progress-track {
+  width: 100%;
+  height: 8px;
+  background-color: var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.splash-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #F59E0B 0%, #FFB020 100%);
+  border-radius: 8px;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+  transition: width 0.08s linear;
+}
+
+.splash-progress-percentage {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #F59E0B;
+  margin-top: 0.5rem;
+  letter-spacing: 0.5px;
+}
+
+/* Bottom Skyline Area */
+.splash-bottom-area {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: auto;
+}
+
+.splash-skyline-svg {
+  width: 100%;
+  max-height: 140px;
+  height: auto;
+}
+
+.ill-building {
+  fill: var(--border-color);
+  opacity: 0.3;
+  transition: fill 0.3s ease;
+}
+
+.dark .ill-building {
+  fill: #1E293B;
+  opacity: 0.45;
+}
+
+.ill-crane-part {
+  stroke: var(--text-muted);
+  stroke-linecap: round;
+  opacity: 0.35;
+  transition: stroke 0.3s ease;
+}
+
+.dark .ill-crane-part {
+  stroke: #475569;
+  opacity: 0.55;
+}
+
+.ill-ground-arc {
+  stroke: var(--border-color);
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+
+.dark .ill-ground-arc {
+  stroke: #F59E0B;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6));
+}
+
+.splash-bottom-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.8px;
+  margin-top: 0.75rem;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+/* Animations */
+@keyframes rotate-orbit-clockwise {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rotate-orbit-counter {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes logo-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.6));
+  }
+  50% {
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 24px rgba(245, 158, 11, 0.85));
+  }
+}
+
+/* Floating outline icon classes */
+.ill-wrench {
+  animation: float-wrench 4.5s ease-in-out infinite alternate;
+  transform-origin: 100px 80px;
+}
+.ill-roller {
+  animation: float-roller 5s ease-in-out infinite alternate;
+  transform-origin: 470px 70px;
+}
+.ill-helmet {
+  animation: float-helmet 4s ease-in-out infinite alternate;
+  transform-origin: 60px 180px;
+}
+.ill-gear {
+  animation: float-gear 5.5s ease-in-out infinite alternate;
+  transform-origin: 520px 180px;
+}
+.ill-shovel {
+  animation: float-shovel 4.8s ease-in-out infinite alternate;
+  transform-origin: 100px 290px;
+}
+.ill-hammer {
+  animation: float-hammer 4.2s ease-in-out infinite alternate;
+  transform-origin: 470px 290px;
+}
+
+@keyframes float-wrench {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(-3px, -6px) rotate(-4deg); }
+}
+@keyframes float-roller {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(4px, -4px) rotate(5deg); }
+}
+@keyframes float-helmet {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(-5px, 2px) rotate(-3deg); }
+}
+@keyframes float-gear {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(3px, 4px) rotate(22deg); }
+}
+@keyframes float-shovel {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(-4px, 6px) rotate(4deg); }
+}
+@keyframes float-hammer {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(4px, -5px) rotate(-6deg); }
+}
+
+/* Logo Zoom Phase (100% completion) */
+.logo-zoom-active {
+  animation: logo-zoom-in-out 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transform-origin: 300px 180px;
+}
+
+@keyframes logo-zoom-in-out {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.6));
+  }
+  25% {
+    transform: scale(0.32);
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.2));
+    opacity: 1;
+  }
+  100% {
+    transform: scale(3.5);
+    filter: drop-shadow(0 0 35px rgba(245, 158, 11, 0.95)) blur(1px);
+    opacity: 0;
+  }
+}
+
+.zoom-phase-hide {
+  opacity: 0 !important;
+  transform: translateY(20px);
+  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+              transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+/* RESPONSIVE DESIGN - MOBILE & TABLET ADAPTATION */
+@media (max-width: 768px) {
+  .splash-overlay {
+    padding: 3vh 1.2rem 1.5vh 1.2rem;
+  }
+  
+  .splash-center-content {
+    max-width: 90vw;
+  }
+  
+  .splash-center-svg {
+    max-width: 320px;
+    margin-bottom: 0;
+  }
+  
+  .splash-logo-text {
+    font-size: 2.2rem;
+  }
+  
+  .splash-slogan {
+    font-size: 0.92rem;
+  }
+  
+  .splash-progress-container {
+    margin-top: 1.5rem;
+    max-width: 260px;
+  }
+  
+  .splash-skyline-svg {
+    max-height: 90px;
+  }
+  
+  .splash-bottom-text {
+    font-size: 0.78rem;
+    margin-top: 0.4rem;
+    letter-spacing: 0.5px;
+  }
+}
+
+@media (max-width: 480px) {
+  .splash-center-svg {
+    max-width: 270px;
+  }
+  
+  .splash-logo-text {
+    font-size: 1.85rem;
+  }
+  
+  .splash-slogan {
+    font-size: 0.85rem;
+  }
+  
+  .splash-progress-container {
+    margin-top: 1.2rem;
+    max-width: 220px;
+  }
+  
+  .splash-skyline-svg {
+    max-height: 70px;
+  }
+}

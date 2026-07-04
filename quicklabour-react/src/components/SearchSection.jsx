@@ -4,7 +4,7 @@ const SearchSection = () => {
   return (
     <section className="search-section" id="search">
       <div className="container">
-        <div className="search-box reveal">
+        <div className="search-box reveal visible">
           <h5 className="fw-700 mb-3" style={{ color: '#0a2540', fontWeight: 700 }}>
             Find the right worker right now
           </h5>

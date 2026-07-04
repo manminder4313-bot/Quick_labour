@@ -70,9 +70,9 @@ const TestimonialSection = () => {
                       <i className="bi bi-hammer me-1"></i> {testi.workerType}
                     </span>
                   </div>
-                  <p className="mb-4" style={{ fontStyle: 'italic', color: '#4a5568', fontSize: '0.94rem', lineHeight: '1.6' }}>{testi.text}</p>
+                  <p className="mb-4" style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.94rem', lineHeight: '1.6' }}>{testi.text}</p>
                 </div>
-                <div className="d-flex align-items-center mt-auto gap-3 pt-3" style={{ borderTop: '1px dashed #e2e8f0' }}>
+                <div className="d-flex align-items-center mt-auto gap-3 pt-3" style={{ borderTop: '1px dashed var(--border-color)' }}>
                   <img src={testi.avatar} alt={testi.name} className="testi-avatar" />
                   <div>
                     <div className="testi-name">{testi.name}</div>

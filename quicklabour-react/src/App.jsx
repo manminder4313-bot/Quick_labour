@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import SplashLoader from './components/SplashLoader';
 import Home from './pages/Home';
 import Categories from './pages/Categories';
 import Works from './pages/Works';
@@ -21,9 +22,12 @@ import WorkerConduct from './pages/WorkerConduct';
 import './App.css';
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   return (
     <Router>
       <div className="app-container">
+        {showSplash && <SplashLoader onComplete={() => setShowSplash(false)} />}
         <Navbar />
         <main>
           <Routes>

@@ -439,8 +439,8 @@ const ClientDashboard = () => {
     e.preventDefault();
     if (!selectedJobId) return;
 
-    if (paymentMode === 'online' && onlineMethod === 'wallet' && Number(walletBalance) < selectedJobAmount) {
-      alert(`⚠️ Insufficient Wallet Balance! Please add money to your wallet or choose another online option.`);
+    if (paymentMode === 'online' && onlineMethod === 'wallet' && Number(walletBalance) - selectedJobAmount < 50) {
+      alert(`⚠️ Insufficient Wallet Balance! A minimum balance of ₹50 must be maintained in your wallet.`);
       return;
     }
 
@@ -509,7 +509,7 @@ const ClientDashboard = () => {
           id: 'tx_001',
           date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toLocaleString('en-IN'),
           type: 'Sign-up Bonus',
-          amount: 20,
+          amount: 50,
           isCredit: true,
           status: 'Completed'
         },
@@ -587,8 +587,8 @@ const ClientDashboard = () => {
       return;
     }
     const amt = Number(withdrawAmount);
-    if (amt > walletBalance) {
-      showClassyAlert("Insufficient wallet balance for withdrawal.", "Insufficient Balance");
+    if (walletBalance - amt < 50) {
+      showClassyAlert("Insufficient wallet balance. A minimum balance of ₹50 must be maintained in your wallet after withdrawal.", "Insufficient Balance");
       return;
     }
 
@@ -648,8 +648,8 @@ const ClientDashboard = () => {
       showClassyAlert("Please enter a valid payment amount.", "Invalid Input");
       return;
     }
-    if (Number(paymentAmount) > walletBalance) {
-      showClassyAlert("Insufficient wallet balance. Please add money first.", "Insufficient Balance");
+    if (walletBalance - Number(paymentAmount) < 50) {
+      showClassyAlert("Insufficient wallet balance. A minimum balance of ₹50 must be maintained in your wallet after payment.", "Insufficient Balance");
       return;
     }
     setIsPayingLabour(true);
@@ -802,7 +802,7 @@ const ClientDashboard = () => {
           )}
 
           {walletSuccessMsg && (
-            <div className="alert alert-success alert-dismissible fade show rounded-16 shadow mb-4" role="alert" style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #10b981' }}>
+            <div className="alert alert-success alert-dismissible fade show rounded-16 shadow mb-4" role="alert" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', border: '1px solid #10B981' }}>
               <strong className="fw-700">{walletSuccessMsg}</strong>
               <button type="button" className="btn-close" onClick={() => setWalletSuccessMsg('')}></button>
             </div>
@@ -904,7 +904,7 @@ const ClientDashboard = () => {
                     </div>
                     <button
                       onClick={() => {
-                        if (walletBalance >= pendingPenalty) {
+                        if (walletBalance - pendingPenalty >= 50) {
                           const newBalance = walletBalance - pendingPenalty;
                           setWalletBalance(newBalance);
                           sessionStorage.setItem('userWalletBalance', newBalance);
@@ -912,6 +912,7 @@ const ClientDashboard = () => {
                           localStorage.setItem('quicklabour_client_penalties', JSON.stringify(clientPenalties));
                           alert(`✅ Penalty of ₹${pendingPenalty} successfully paid from your wallet!`);
                         } else {
+                           alert("⚠️ A minimum balance of ₹50 must be maintained in your wallet. Please add money first.");
                            setActiveWalletTab('add');
                            setShowWalletHubModal(true);
                         }
@@ -1000,7 +1001,7 @@ const ClientDashboard = () => {
                         <div key={job.id} className="mb-5 border-bottom pb-4" style={{ borderBottomStyle: 'dashed' }}>
                           <div className="d-flex justify-content-between align-items-start mb-3">
                             <div>
-                              <h5 className="fw-700 mb-1" style={{ color: '#0a2540' }}>{job.title}</h5>
+                              <h5 className="fw-700 mb-1" style={{ color: 'var(--text-main)' }}>{job.title}</h5>
                               <div className="d-flex align-items-center gap-2 mt-1">
                                 <span className="text-muted small fw-600"><i className="bi bi-calendar3 me-1"></i>{job.date}</span>
                                 {job.workersNeeded > 1 && (
@@ -1109,7 +1110,7 @@ const ClientDashboard = () => {
                         <div key={job.id} className="mb-5 border-bottom pb-4" style={{ borderBottomStyle: 'dashed' }}>
                           <div className="d-flex justify-content-between align-items-start mb-3">
                             <div>
-                              <h5 className="fw-700 mb-1" style={{ color: '#0a2540' }}>{job.title}</h5>
+                              <h5 className="fw-700 mb-1" style={{ color: 'var(--text-main)' }}>{job.title}</h5>
                               <div className="d-flex align-items-center gap-2 mt-1">
                                 <span className="text-muted small fw-600"><i className="bi bi-calendar3 me-1"></i>{job.date}</span>
                                 {job.workersNeeded > 1 && (
@@ -1218,7 +1219,7 @@ const ClientDashboard = () => {
             {/* Sidebar */}
             <div className="col-lg-4">
               <div className="dashboard-card mb-4">
-                <h5 className="fw-700 mb-3" style={{ color: '#0a2540' }}>Account Settings</h5>
+                <h5 className="fw-700 mb-3" style={{ color: 'var(--text-main)' }}>Account Settings</h5>
                 <div className="text-center py-3 border-bottom mb-3">
                   <img
                     src={profileAvatar}
@@ -1280,9 +1281,9 @@ const ClientDashboard = () => {
                   onClick={handleOpenEditModal}
                   className="btn w-100 mt-2 d-flex align-items-center justify-content-center gap-2 py-2"
                   style={{
-                    background: '#f1f5f9',
+                    background: 'var(--bg-surface-hover)',
                     border: '1px dashed #cbd5e1',
-                    color: '#475569',
+                    color: 'var(--text-muted)',
                     borderRadius: '12px',
                     fontWeight: '700',
                     fontSize: '0.88rem',
@@ -1294,7 +1295,7 @@ const ClientDashboard = () => {
               </div>
 
               <div className="dashboard-card">
-                <h5 className="fw-700 mb-3" style={{ color: '#0a2540' }}>Hiring Guidelines</h5>
+                <h5 className="fw-700 mb-3" style={{ color: 'var(--text-main)' }}>Hiring Guidelines</h5>
                 <div className="small text-muted mb-3" style={{ lineHeight: '1.6' }}>
                   QuickLabour recommends reviewing worker ratings and feedback prior to hiring. Ensure that the daily wages and materials costs are discussed directly over the chat system.
                 </div>
@@ -1316,12 +1317,12 @@ const ClientDashboard = () => {
 
       {/* ── Live GPS Tracking Modal ── */}
       {showTrackingModal && trackingJob && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(10px)', zIndex: 1070 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(10px)', zIndex: 1070 }}>
           <div className="modal-dialog modal-dialog-centered modal-lg" style={{ maxWidth: '850px' }}>
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', height: '80vh', display: 'flex', flexDirection: 'column' }}>
               
               {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #0a2540 0%, #1a3a5c 100%)', borderBottom: 'none' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'var(--navbar-bg)', borderBottom: '1px solid var(--border-color)', borderBottom: 'none' }}>
                 <div>
                   <h5 className="modal-title fw-800 m-0 d-flex align-items-center gap-2">
                     <i className="bi bi-compass-fill text-warning animate-bounce" style={{ fontSize: '1.25rem' }}></i>
@@ -1335,7 +1336,7 @@ const ClientDashboard = () => {
               </div>
 
               {/* Map Iframe container */}
-              <div className="modal-body p-0" style={{ flex: 1, overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
+              <div className="modal-body p-0" style={{ flex: 1, overflow: 'hidden', background: 'var(--bg-app)', position: 'relative' }}>
                 <iframe
                   title="Live GPS Tracking Route"
                   width="100%"
@@ -1542,10 +1543,10 @@ const ClientDashboard = () => {
                         </div>
                       </div>
 
-                      {onlineMethod === 'wallet' && Number(walletBalance) < selectedJobAmount && (
+                      {onlineMethod === 'wallet' && Number(walletBalance) - selectedJobAmount < 50 && (
                         <div className="alert alert-warning mt-3 mb-0 rounded-12 d-flex align-items-center gap-2 py-2" style={{ fontSize: '0.8rem' }}>
                           <i className="bi bi-exclamation-triangle-fill"></i>
-                          <span>Insufficient Balance! You need ₹{selectedJobAmount} (Current: ₹{walletBalance}).</span>
+                          <span>Insufficient Balance! A minimum balance of ₹50 must be maintained (Current: ₹{walletBalance}).</span>
                         </div>
                       )}
 
@@ -1589,9 +1590,9 @@ const ClientDashboard = () => {
 
       {/* ── Edit Profile Modal ── */}
       {showEditModal && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
 
               {/* Header */}
               <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', borderBottom: 'none' }}>
@@ -1725,12 +1726,12 @@ const ClientDashboard = () => {
 
       {/* ── Unified Wallet Hub Modal ── */}
       {showWalletHubModal && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               
               {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)', borderBottom: 'none' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)', borderBottom: 'none' }}>
                 <div className="d-flex align-items-center gap-3">
                   <div className="rounded-3 p-2 bg-white bg-opacity-20 d-flex align-items-center justify-content-center" style={{ width: '45px', height: '45px' }}>
                     <i className="bi bi-wallet2 fs-4"></i>
@@ -2370,7 +2371,7 @@ const ClientDashboard = () => {
                             type="text"
                             maxLength="4"
                             className="form-control text-center font-monospace fw-800 fs-3"
-                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
+                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid var(--border-color)', borderRadius: '12px' }}
                             placeholder="••••"
                             value={withdrawOtp}
                             onChange={(e) => setWithdrawOtp(e.target.value.replace(/\D/g, ''))}
@@ -2495,9 +2496,9 @@ const ClientDashboard = () => {
 
       {/* Client Dispute Modal */}
       {showClientDisputeModal && disputeJob && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', borderBottom: 'none' }}>
                 <h5 className="modal-title fw-800 m-0">⚖️ File a Dispute Case</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowClientDisputeModal(false)}></button>
@@ -2574,9 +2575,9 @@ const ClientDashboard = () => {
 
       {/* ── Classy Custom Alert Modal ── */}
       {classyAlert.show && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '400px' }}>
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div className="mb-3">
                 {classyAlert.type === 'danger' || classyAlert.type === 'error' ? (
                   <div className="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle animate-pulse" style={{ width: '64px', height: '64px' }}>

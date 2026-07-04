@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, LABOUR_INDUSTRIES } from '../utils/api';
+import { useTheme } from '../context/ThemeContext';
 
 const INDUSTRY_AVATARS = {
   "Construction Labour": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=60&q=80",
@@ -27,6 +28,7 @@ const CATEGORY_COLORS = [
 ];
 
 const IndustryDashboard = () => {
+  const { theme } = useTheme();
   const [workerCounts, setWorkerCounts] = useState({});
   const [selections, setSelections] = useState({}); // { specialty: qty }
   const [activeCategory, setActiveCategory] = useState(null);
@@ -121,13 +123,13 @@ const IndustryDashboard = () => {
 
       {/* ── Sticky Cart Bar ── */}
       {totalSelected > 0 && (
-        <div style={{ position: 'sticky', top: 60, zIndex: 100, background: '#0a2540', padding: '12px 0', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+        <div style={{ position: 'sticky', top: 60, zIndex: 100, background: 'var(--bg-surface)', padding: '12px 0', borderBottom: '1px solid var(--border-color)', boxShadow: 'var(--shadow-md)' }}>
           <div className="container d-flex justify-content-between align-items-center flex-wrap gap-3">
             <div className="d-flex align-items-center gap-3 flex-wrap">
               <span style={{ color: '#f5a623', fontWeight: 800, fontSize: '1rem' }}>
                 <i className="bi bi-people-fill me-2"></i>{totalSelected} Workers Selected
               </span>
-              <span style={{ color: '#b0c4de', fontSize: '0.88rem' }}>Est. daily cost: <strong style={{ color: '#fff' }}>₹{totalCost.toLocaleString('en-IN')}/day</strong></span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>Est. daily cost: <strong style={{ color: 'var(--text-main)' }}>₹{totalCost.toLocaleString('en-IN')}/day</strong></span>
             </div>
             <button
               onClick={() => setShowOrderModal(true)}
@@ -140,7 +142,7 @@ const IndustryDashboard = () => {
       )}
 
       {/* ── Main Content ── */}
-      <div style={{ background: '#f8fafc', minHeight: '60vh', padding: '40px 0 80px' }}>
+      <div style={{ background: 'var(--bg-app)', minHeight: '60vh', padding: '40px 0 80px' }}>
         <div className="container">
 
           {/* Category filter tabs */}
@@ -148,10 +150,10 @@ const IndustryDashboard = () => {
             <button
               onClick={() => setActiveCategory(null)}
               style={{
-                border: 'none', borderRadius: 50, padding: '8px 20px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
-                background: !activeCategory ? '#0d6efd' : '#fff',
-                color: !activeCategory ? '#fff' : '#475569',
-                boxShadow: !activeCategory ? '0 4px 12px rgba(13,110,253,0.3)' : '0 1px 4px rgba(0,0,0,0.08)'
+                border: '1px solid var(--border-color)', borderRadius: 50, padding: '8px 20px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                background: !activeCategory ? 'var(--primary)' : 'var(--card-bg)',
+                color: !activeCategory ? '#fff' : 'var(--text-main)',
+                boxShadow: 'var(--shadow-sm)'
               }}
             >All Categories</button>
             {categories.map(([name, data]) => (
@@ -159,10 +161,10 @@ const IndustryDashboard = () => {
                 key={name}
                 onClick={() => setActiveCategory(activeCategory === name ? null : name)}
                 style={{
-                  border: 'none', borderRadius: 50, padding: '8px 20px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
-                  background: activeCategory === name ? '#0a2540' : '#fff',
-                  color: activeCategory === name ? '#fff' : '#475569',
-                  boxShadow: activeCategory === name ? '0 4px 12px rgba(10,37,64,0.3)' : '0 1px 4px rgba(0,0,0,0.08)'
+                  border: '1px solid var(--border-color)', borderRadius: 50, padding: '8px 20px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                  background: activeCategory === name ? 'var(--primary)' : 'var(--card-bg)',
+                  color: activeCategory === name ? '#fff' : 'var(--text-main)',
+                  boxShadow: 'var(--shadow-sm)'
                 }}
               >
                 {data.icon} {name.split(' ')[0]}
@@ -176,28 +178,34 @@ const IndustryDashboard = () => {
               .filter(([name]) => !activeCategory || activeCategory === name)
               .map(([catName, catData], idx) => {
                 const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+                const isDark = theme === 'dark';
+                const dynamicColor = {
+                  accent: color.accent,
+                  bg: isDark ? 'rgba(255,255,255,0.03)' : color.bg,
+                  border: isDark ? 'var(--border-color)' : color.border
+                };
                 const catSelected = catData.specialties.reduce((sum, sp) => sum + (selections[sp.name] || 0), 0);
                 const catWorkers = catData.specialties.reduce((sum, sp) => sum + (workerCounts[sp.name] || 0), 0);
 
                 return (
                   <div key={catName} className="col-lg-6 col-xl-4">
-                    <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', border: `1.5px solid ${catSelected > 0 ? color.accent : '#e8edf5'}`, boxShadow: catSelected > 0 ? `0 8px 24px ${color.accent}22` : '0 2px 8px rgba(0,0,0,0.06)', transition: 'all 0.3s' }}>
+                    <div style={{ background: 'var(--card-bg)', borderRadius: 20, overflow: 'hidden', border: `1.5px solid ${catSelected > 0 ? dynamicColor.accent : 'var(--border-color)'}`, boxShadow: catSelected > 0 ? `0 8px 24px ${dynamicColor.accent}22` : 'var(--shadow-sm)', transition: 'all 0.3s' }}>
                       {/* Category Header */}
-                      <div style={{ background: color.bg, borderBottom: `1px solid ${color.border}`, padding: '18px 20px' }}>
+                      <div style={{ background: dynamicColor.bg, borderBottom: `1px solid ${dynamicColor.border}`, padding: '18px 20px' }}>
                         <div className="d-flex justify-content-between align-items-center">
                           <div className="d-flex align-items-center gap-3">
-                            <div style={{ width: 48, height: 48, background: color.border, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
+                            <div style={{ width: 48, height: 48, background: dynamicColor.border, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
                               {catData.icon}
                             </div>
                             <div>
-                              <h6 style={{ margin: 0, fontWeight: 800, color: '#0a2540', fontSize: '0.92rem' }}>{catName}</h6>
-                              <span style={{ fontSize: '0.75rem', color: '#6c7a8d' }}>
+                              <h6 style={{ margin: 0, fontWeight: 800, color: 'var(--text-main)', fontSize: '0.92rem' }}>{catName}</h6>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                 <i className="bi bi-people-fill me-1"></i>{catWorkers} workers available
                               </span>
                             </div>
                           </div>
                           {catSelected > 0 && (
-                            <span style={{ background: color.accent, color: '#fff', borderRadius: 50, padding: '4px 12px', fontSize: '0.75rem', fontWeight: 800 }}>
+                            <span style={{ background: dynamicColor.accent, color: '#fff', borderRadius: 50, padding: '4px 12px', fontSize: '0.75rem', fontWeight: 800 }}>
                               {catSelected} selected
                             </span>
                           )}
@@ -210,14 +218,14 @@ const IndustryDashboard = () => {
                           const count = selections[sp.name] || 0;
                           const available = workerCounts[sp.name] || 0;
                           return (
-                            <div key={sp.name} style={{ padding: '12px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                            <div key={sp.name} style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, color: '#0a2540', fontSize: '0.85rem' }}>{sp.name}</div>
-                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 2 }}>{sp.desc}</div>
+                                <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.85rem' }}>{sp.name}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{sp.desc}</div>
                                 <div className="d-flex align-items-center gap-2 mt-1 flex-wrap">
-                                  <span style={{ fontSize: '0.72rem', color: color.accent, fontWeight: 700 }}>₹{sp.baseRate}/day</span>
-                                  <span style={{ width: 3, height: 3, background: '#cbd5e1', borderRadius: '50%', display: 'inline-block' }}></span>
-                                  <span style={{ fontSize: '0.7rem', color: available > 0 ? '#15803d' : '#dc2626', fontWeight: 600 }}>
+                                  <span style={{ fontSize: '0.72rem', color: dynamicColor.accent, fontWeight: 700 }}>₹{sp.baseRate}/day</span>
+                                  <span style={{ width: 3, height: 3, background: 'var(--border-color)', borderRadius: '50%', display: 'inline-block' }}></span>
+                                  <span style={{ fontSize: '0.7rem', color: available > 0 ? '#10B981' : '#EF4444', fontWeight: 600 }}>
                                     {available > 0 ? `${available} online` : 'None online'}
                                   </span>
                                 </div>
@@ -227,12 +235,12 @@ const IndustryDashboard = () => {
                                 <button
                                   onClick={() => updateQty(sp.name, -1)}
                                   disabled={count === 0}
-                                  style={{ width: 30, height: 30, borderRadius: '50%', border: `1.5px solid ${count > 0 ? color.accent : '#e2e8f0'}`, background: count > 0 ? color.bg : '#f8fafc', color: count > 0 ? color.accent : '#cbd5e1', fontWeight: 800, fontSize: '1rem', cursor: count > 0 ? 'pointer' : 'default', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  style={{ width: 30, height: 30, borderRadius: '50%', border: `1.5px solid ${count > 0 ? dynamicColor.accent : 'var(--border-color)'}`, background: count > 0 ? dynamicColor.bg : 'var(--bg-surface-hover)', color: count > 0 ? dynamicColor.accent : 'var(--text-muted)', fontWeight: 800, fontSize: '1rem', cursor: count > 0 ? 'pointer' : 'default', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                 >−</button>
-                                <span style={{ fontWeight: 800, color: count > 0 ? color.accent : '#94a3b8', fontSize: '0.95rem', minWidth: 20, textAlign: 'center' }}>{count}</span>
+                                <span style={{ fontWeight: 800, color: count > 0 ? dynamicColor.accent : 'var(--text-muted)', fontSize: '0.95rem', minWidth: 20, textAlign: 'center' }}>{count}</span>
                                 <button
                                   onClick={() => updateQty(sp.name, 1)}
-                                  style={{ width: 30, height: 30, borderRadius: '50%', border: `1.5px solid ${color.accent}`, background: color.accent, color: '#fff', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  style={{ width: 30, height: 30, borderRadius: '50%', border: `1.5px solid ${dynamicColor.accent}`, background: dynamicColor.accent, color: '#fff', fontWeight: 800, fontSize: '1rem', cursor: 'pointer', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                 >+</button>
                               </div>
                             </div>
@@ -248,8 +256,8 @@ const IndustryDashboard = () => {
           {/* Empty state */}
           {totalSelected === 0 && (
             <div className="text-center mt-5 pt-3">
-              <i className="bi bi-people" style={{ fontSize: '3rem', color: '#cbd5e1', display: 'block', marginBottom: 12 }}></i>
-              <p style={{ color: '#94a3b8', fontWeight: 600 }}>Use the + buttons above to select workers by role and quantity</p>
+              <i className="bi bi-people" style={{ fontSize: '3rem', color: 'var(--border-color)', display: 'block', marginBottom: 12 }}></i>
+              <p style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Use the + buttons above to select workers by role and quantity</p>
             </div>
           )}
         </div>
@@ -258,9 +266,9 @@ const IndustryDashboard = () => {
       {/* ── Order Summary Modal ── */}
       {showOrderModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(8px)', zIndex: 1060, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 560, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,0.3)' }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: 24, width: '100%', maxWidth: 560, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)' }}>
             {/* Modal Header */}
-            <div style={{ background: 'linear-gradient(135deg, #0a2540, #0d6efd)', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ background: 'linear-gradient(135deg, var(--bg-surface-hover), var(--primary))', padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h5 style={{ color: '#fff', fontWeight: 800, margin: 0 }}><i className="bi bi-briefcase-fill me-2"></i>Workforce Request</h5>
                 <p style={{ color: '#b0c4de', margin: 0, fontSize: '0.82rem', marginTop: 4 }}>{totalSelected} workers · Est. ₹{totalCost.toLocaleString('en-IN')}/day</p>
@@ -272,18 +280,18 @@ const IndustryDashboard = () => {
               {submitted ? (
                 <div className="text-center py-5 px-4">
                   <div style={{ fontSize: '3.5rem', marginBottom: 12 }}>🎉</div>
-                  <h5 style={{ fontWeight: 800, color: '#0a2540' }}>Request Submitted!</h5>
-                  <p style={{ color: '#6c7a8d', fontSize: '0.9rem' }}>Our team will contact you within 2 hours to confirm worker assignments.</p>
+                  <h5 style={{ fontWeight: 800, color: 'var(--text-main)' }}>Request Submitted!</h5>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Our team will contact you within 2 hours to confirm worker assignments.</p>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit}>
                   {/* Selection Summary */}
-                  <div style={{ padding: '16px 24px', background: '#f8fafc', borderBottom: '1px solid #e8edf5' }}>
-                    <p style={{ fontWeight: 700, color: '#0a2540', marginBottom: 10, fontSize: '0.85rem' }}>Selected Workers</p>
+                  <div style={{ padding: '16px 24px', background: 'var(--bg-surface-hover)', borderBottom: '1px solid var(--border-color)' }}>
+                    <p style={{ fontWeight: 700, color: 'var(--text-main)', marginBottom: 10, fontSize: '0.85rem' }}>Selected Workers</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {Object.entries(selections).map(([name, qty]) => (
-                        <div key={name} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 50, padding: '4px 14px', fontSize: '0.78rem', fontWeight: 700, color: '#0a2540', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ background: '#0d6efd', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 800 }}>{qty}</span>
+                        <div key={name} style={{ background: 'var(--card-bg)', border: '1.5px solid var(--border-color)', borderRadius: 50, padding: '4px 14px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ background: 'var(--primary)', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 800 }}>{qty}</span>
                           {name}
                         </div>
                       ))}
@@ -299,38 +307,38 @@ const IndustryDashboard = () => {
                       { label: 'Start Date', key: 'startDate', placeholder: '', icon: 'bi-calendar', type: 'date' },
                     ].map(({ label, key, placeholder, icon, type }) => (
                       <div key={key}>
-                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>{label}</label>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>{label}</label>
                         <div style={{ position: 'relative' }}>
-                          <i className={`bi ${icon}`} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}></i>
+                          <i className={`bi ${icon}`} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}></i>
                           <input
                             type={type || 'text'}
                             required
                             placeholder={placeholder}
                             value={orderForm[key]}
                             onChange={e => setOrderForm(p => ({ ...p, [key]: e.target.value }))}
-                            style={{ width: '100%', paddingLeft: 38, paddingRight: 14, paddingTop: 10, paddingBottom: 10, border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit' }}
+                            style={{ width: '100%', paddingLeft: 38, paddingRight: 14, paddingTop: 10, paddingBottom: 10, border: '1.5px solid var(--border-color)', borderRadius: 12, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit', background: 'var(--input-bg)', color: 'var(--text-main)' }}
                           />
                         </div>
                       </div>
                     ))}
                     <div>
-                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Additional Notes (optional)</label>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Additional Notes (optional)</label>
                       <textarea
                         rows={3}
                         placeholder="Any special requirements, shift timings, tools needed..."
                         value={orderForm.notes}
                         onChange={e => setOrderForm(p => ({ ...p, notes: e.target.value }))}
-                        style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: '0.88rem', resize: 'none', outline: 'none', fontFamily: 'inherit' }}
+                        style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--border-color)', borderRadius: 12, fontSize: '0.88rem', resize: 'none', outline: 'none', fontFamily: 'inherit', background: 'var(--input-bg)', color: 'var(--text-main)' }}
                       />
                     </div>
                   </div>
 
                   {/* Footer */}
-                  <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e8edf5', display: 'flex', gap: 12 }}>
-                    <button type="button" onClick={() => setShowOrderModal(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontWeight: 700, background: '#fff', cursor: 'pointer', color: '#475569' }}>
+                  <div style={{ padding: '16px 24px', background: 'var(--bg-surface-hover)', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 12 }}>
+                    <button type="button" onClick={() => setShowOrderModal(false)} style={{ flex: 1, padding: '11px', border: '1.5px solid var(--border-color)', borderRadius: 12, fontWeight: 700, background: 'var(--card-bg)', cursor: 'pointer', color: 'var(--text-main)' }}>
                       Cancel
                     </button>
-                    <button type="submit" disabled={submitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 12, fontWeight: 800, background: 'linear-gradient(135deg, #0a2540, #0d6efd)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <button type="submit" disabled={submitting} style={{ flex: 2, padding: '11px', border: 'none', borderRadius: 12, fontWeight: 800, background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}>
                       {submitting ? (
                         <><span className="spinner-border spinner-border-sm me-2" role="status"></span>Submitting...</>
                       ) : (

@@ -126,9 +126,9 @@ const Categories = () => {
 
           {/* Search */}
           <div className="mt-4" style={{ maxWidth: 480, margin: '24px auto 0' }}>
-            <div className="input-group" style={{ borderRadius: 14, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-              <span className="input-group-text bg-white border-0 ps-3">
-                <i className="bi bi-search text-muted"></i>
+            <div className="input-group shadow-sm" style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+              <span className="input-group-text border-0 ps-3" style={{ background: 'var(--card-bg)', color: 'var(--text-muted)' }}>
+                <i className="bi bi-search"></i>
               </span>
               <input
                 type="text"
@@ -136,14 +136,15 @@ const Categories = () => {
                 placeholder="Search e.g. Welder, Cook, Miner..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                style={{ fontSize: '0.95rem' }}
+                style={{ fontSize: '0.95rem', background: 'var(--card-bg)', color: 'var(--text-main)' }}
               />
               {searchTerm && (
                 <button
-                  className="btn btn-outline-secondary border-0 bg-white pe-3"
+                  className="btn border-0 pe-3"
                   onClick={() => setSearchTerm('')}
+                  style={{ background: 'var(--card-bg)', color: 'var(--text-muted)' }}
                 >
-                  <i className="bi bi-x-lg text-muted"></i>
+                  <i className="bi bi-x-lg"></i>
                 </button>
               )}
             </div>
@@ -152,7 +153,7 @@ const Categories = () => {
       </section>
 
       {/* ── Industry Filter Pills ── */}
-      <div style={{ background: '#fff', borderBottom: '1.5px solid #e8edf5', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+      <div style={{ background: 'var(--card-bg)', borderBottom: '1.5px solid var(--card-border)', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 12px rgba(0,0,0,0.05)', transition: 'all 0.3s ease' }}>
         <div className="container">
           <div className="d-flex gap-2 py-3" style={{ overflowX: 'auto', scrollbarWidth: 'none' }}>
             {industryNames.map(name => {
@@ -181,7 +182,7 @@ const Categories = () => {
       </div>
 
       {/* ── Industry Sections ── */}
-      <section className="py-5" style={{ background: '#f8f9fb' }}>
+      <section className="py-5" style={{ background: 'var(--bg-app)', transition: 'background-color 0.3s ease' }}>
         <div className="container">
 
           {filteredIndustries.length === 0 ? (
@@ -201,21 +202,21 @@ const Categories = () => {
                 <div className="d-flex align-items-center gap-3 mb-4">
                   <div
                     className="category-icon mb-0 flex-shrink-0"
-                    style={{ fontSize: '1.6rem', background: 'rgba(13,110,253,0.07)', color: '#0d6efd' }}
+                    style={{ fontSize: '1.6rem', background: 'rgba(13,110,253,0.12)', color: '#0d6efd' }}
                   >
                     {info.icon}
                   </div>
                   <div>
-                    <h4 className="fw-800 mb-0" style={{ fontWeight: 800, color: '#0a2540' }}>
+                    <h4 className="fw-800 mb-0" style={{ fontWeight: 800, color: 'var(--text-main)' }}>
                       {industryName}
                     </h4>
-                    <small className="text-muted">
+                    <small className="text-muted" style={{ color: 'var(--text-muted)' }}>
                       <i className={`bi ${INDUSTRY_ICONS[industryName] || 'bi-person-gear'} me-1`}></i>
                       {filteredSpecs.length} worker type{filteredSpecs.length !== 1 ? 's' : ''} available
                     </small>
                   </div>
                   {/* Divider line */}
-                  <div className="flex-fill ms-2" style={{ height: 1.5, background: 'linear-gradient(to right,#e8edf5,transparent)' }} />
+                  <div className="flex-fill ms-2" style={{ height: 1.5, background: 'linear-gradient(to right, var(--border-color), transparent)' }} />
                 </div>
 
                 {/* Worker Cards — uses existing .category-box CSS classes */}

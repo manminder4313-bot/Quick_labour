@@ -502,8 +502,8 @@ router.put('/:id/complete', protect, async (req, res) => {
       if (!clientUser) {
         return res.status(404).json({ message: 'Client profile not found' });
       }
-      if ((clientUser.walletBalance || 0) < amount) {
-        return res.status(400).json({ message: `Insufficient wallet balance (₹${clientUser.walletBalance || 0}). Please add funds or use another online method.` });
+      if ((clientUser.walletBalance || 0) - amount < 50) {
+        return res.status(400).json({ message: `Insufficient wallet balance. A minimum balance of ₹50 must be maintained in your wallet.` });
       }
       clientUser.walletBalance = (clientUser.walletBalance || 0) - amount;
       await clientUser.save();

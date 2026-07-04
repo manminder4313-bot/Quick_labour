@@ -52,47 +52,6 @@ const seedDatabase = async () => {
       });
     }
 
-    // 2. Seed Reviews if empty
-    const reviewCount = await Review.countDocuments();
-    if (reviewCount === 0) {
-      console.log('🌱 Seeding community reviews list...');
-      const initialReviews = [
-        {
-          name: 'Rahul Mehta',
-          sub: 'Home Owner, Ludhiana',
-          text: 'Found an electrician within 20 minutes of posting. He was professional, did excellent work, and charged exactly what was quoted. QuickLabour is a game changer!',
-          avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-          rating: 5,
-          workerType: 'Electrician',
-        },
-        {
-          name: 'Karan Malhotra',
-          sub: 'Villa Owner, Amritsar',
-          text: 'Hired a painter to paint our living room. Extremely neat, finished ahead of schedule, and used high-quality paints. Highly recommended!',
-          avatar: 'https://randomuser.me/api/portraits/men/84.jpg',
-          rating: 5,
-          workerType: 'Painter',
-        },
-        {
-          name: 'Balwinder Singh',
-          sub: 'Professional Plumber, Amritsar',
-          text: 'As a plumber, QuickLabour helped me find steady work every day. My income has doubled. The app is easy to use and payments are always on time.',
-          avatar: 'https://randomuser.me/api/portraits/men/45.jpg',
-          rating: 5,
-          workerType: 'Plumber',
-        },
-        {
-          name: 'Priya Arora',
-          sub: 'Factory Manager, Chandigarh',
-          text: 'Managing our factory maintenance is now so smooth. We hire 10–15 workers weekly through QuickLabour. Verified profiles save us so much vetting time.',
-          avatar: 'https://randomuser.me/api/portraits/women/68.jpg',
-          rating: 4.5,
-          workerType: 'General Labour',
-        },
-      ];
-      await Review.insertMany(initialReviews);
-    }
-
     // 3. Migrate any static unsplash avatars to dynamic name-based initials
     const migrateStaticAvatars = async () => {
       try {

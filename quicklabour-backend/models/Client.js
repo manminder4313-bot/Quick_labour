@@ -63,7 +63,7 @@ const clientSchema = new mongoose.Schema(
     },
     walletBalance: {
       type: Number,
-      default: 500,
+      default: 50,
     },
     withdrawalOtp: {
       type: String,

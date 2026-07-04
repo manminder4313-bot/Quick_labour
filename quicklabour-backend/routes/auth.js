@@ -61,7 +61,7 @@ router.post('/register', async (req, res) => {
       idFile: safeIdFile || '',
       isOnline: true,
       skills: role === 'worker' ? [occupation] : [],
-      walletBalance: role === 'worker' ? 0 : 500,
+      walletBalance: 50,
       tokens: role === 'worker' ? 20 : 0,
     });
 
@@ -481,8 +481,8 @@ router.post('/wallet/withdraw-otp', protect, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if ((user.walletBalance || 0) < Number(amount)) {
-      return res.status(400).json({ message: 'Insufficient wallet balance for withdrawal' });
+    if ((user.walletBalance || 0) - Number(amount) < 50) {
+      return res.status(400).json({ message: 'Insufficient wallet balance. A minimum balance of ₹50 must be maintained in your wallet.' });
     }
 
     // Generate a random 4 digit OTP code
@@ -525,8 +525,8 @@ router.post('/wallet/withdraw', protect, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if ((user.walletBalance || 0) < Number(amount)) {
-      return res.status(400).json({ message: 'Insufficient wallet balance for withdrawal' });
+    if ((user.walletBalance || 0) - Number(amount) < 50) {
+      return res.status(400).json({ message: 'Insufficient wallet balance. A minimum balance of ₹50 must be maintained in your wallet.' });
     }
 
     if (!user.withdrawalOtp || user.withdrawalOtp !== otp) {
@@ -580,8 +580,8 @@ router.post('/wallet/transfer', protect, async (req, res) => {
       return res.status(403).json({ message: 'Only clients can transfer wallet balances.' });
     }
 
-    if ((client.walletBalance || 0) < Number(amount)) {
-      return res.status(400).json({ message: 'Insufficient wallet balance. Please add money to your wallet first.' });
+    if ((client.walletBalance || 0) - Number(amount) < 50) {
+      return res.status(400).json({ message: 'Insufficient wallet balance. A minimum balance of ₹50 must be maintained in your wallet.' });
     }
 
     const worker = await User.findById(workerId);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
+import { useTheme } from '../context/ThemeContext';
 
 const toTitleCase = (str) => {
   if (!str) return '';
@@ -33,6 +34,7 @@ const COMPANY_SIZES = [
 
 const IndustryRegister = () => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
 
   const [step, setStep] = useState(1); // 1 = Company Info, 2 = Account Details, 3 = Confirm
   const [form, setForm] = useState({
@@ -103,12 +105,13 @@ const IndustryRegister = () => {
   const inputStyle = (key) => ({
     width: '100%',
     padding: '12px 14px 12px 40px',
-    border: `1.5px solid ${errors[key] ? '#dc2626' : '#e2e8f0'}`,
+    border: `1.5px solid ${errors[key] ? 'var(--danger)' : 'var(--border-color)'}`,
     borderRadius: 12,
     fontSize: '0.9rem',
     outline: 'none',
     fontFamily: 'Poppins, sans-serif',
-    background: errors[key] ? '#fff5f5' : '#fff',
+    background: errors[key] ? (theme === 'dark' ? 'rgba(239, 68, 68, 0.15)' : '#fff5f5') : 'var(--input-bg)',
+    color: 'var(--text-main)',
     transition: 'border 0.2s',
   });
 
@@ -137,10 +140,10 @@ const IndustryRegister = () => {
         </div>
 
         {/* Card */}
-        <div style={{ background: '#fff', borderRadius: 24, overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.35)' }}>
+        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: 24, overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}>
 
           {/* Header */}
-          <div style={{ background: 'linear-gradient(135deg, #0a2540, #1a3a5c)', padding: '28px 32px' }}>
+          <div style={{ background: 'linear-gradient(135deg, var(--bg-surface-hover), var(--primary))', padding: '28px 32px' }}>
             <div className="d-flex align-items-center gap-3 mb-2">
               <div style={{ background: 'rgba(245,166,35,0.15)', border: '1px solid rgba(245,166,35,0.3)', borderRadius: '50%', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>🏭</div>
               <div>
@@ -158,12 +161,12 @@ const IndustryRegister = () => {
                 return (
                   <React.Fragment key={label}>
                     <div className="d-flex align-items-center gap-2">
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: done ? '#22c55e' : active ? '#f5a623' : 'rgba(255,255,255,0.15)', color: done || active ? '#fff' : 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }}>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: done ? 'var(--success)' : active ? 'var(--warning)' : 'rgba(255,255,255,0.15)', color: '#fff', fontWeight: 800, fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s' }}>
                         {done ? '✓' : num}
                       </div>
-                      <span style={{ color: active ? '#f5a623' : done ? '#22c55e' : 'rgba(255,255,255,0.4)', fontWeight: 700, fontSize: '0.75rem' }}>{label}</span>
+                      <span style={{ color: active ? 'var(--warning)' : done ? 'var(--success)' : 'rgba(255,255,255,0.4)', fontWeight: 700, fontSize: '0.75rem' }}>{label}</span>
                     </div>
-                    {i < 2 && <div style={{ flex: 1, height: 1, background: done ? '#22c55e' : 'rgba(255,255,255,0.15)', transition: 'all 0.3s' }} />}
+                    {i < 2 && <div style={{ flex: 1, height: 1, background: done ? 'var(--success)' : 'rgba(255,255,255,0.15)', transition: 'all 0.3s' }} />}
                   </React.Fragment>
                 );
               })}
@@ -177,57 +180,57 @@ const IndustryRegister = () => {
               {/* ── Step 1: Company Info ── */}
               {step === 1 && (
                 <div>
-                  <h6 style={{ color: '#0a2540', fontWeight: 800, marginBottom: 20 }}>🏢 Company Details</h6>
+                  <h6 style={{ color: 'var(--text-main)', fontWeight: 800, marginBottom: 20 }}>🏢 Company Details</h6>
 
                   {/* Company Name */}
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Company / Organization Name *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Company / Organization Name *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-building" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <i className="bi bi-building" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                       <input type="text" style={inputStyle('companyName')} placeholder="e.g. Sharma Construction Ltd." value={form.companyName} onChange={e => update('companyName', toTitleCase(e.target.value))} />
                     </div>
-                    {errors.companyName && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.companyName}</span>}
+                    {errors.companyName && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.companyName}</span>}
                   </div>
 
                   {/* Industry Type */}
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Industry / Sector Type *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Industry / Sector Type *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-diagram-3" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', zIndex: 1 }} />
+                      <i className="bi bi-diagram-3" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', zIndex: 1 }} />
                       <select style={selectStyle('industryType')} value={form.industryType} onChange={e => update('industryType', e.target.value)}>
-                        <option value="">Select industry type...</option>
-                        {INDUSTRY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        <option value="" style={{ background: 'var(--card-bg)', color: 'var(--text-main)' }}>Select industry type...</option>
+                        {INDUSTRY_TYPES.map(t => <option key={t} value={t} style={{ background: 'var(--card-bg)', color: 'var(--text-main)' }}>{t}</option>)}
                       </select>
                     </div>
-                    {errors.industryType && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.industryType}</span>}
+                    {errors.industryType && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.industryType}</span>}
                   </div>
 
                   {/* Company Size */}
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Company Size *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Company Size *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-people" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', zIndex: 1 }} />
+                      <i className="bi bi-people" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', zIndex: 1 }} />
                       <select style={selectStyle('companySize')} value={form.companySize} onChange={e => update('companySize', e.target.value)}>
-                        <option value="">Select company size...</option>
-                        {COMPANY_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                        <option value="" style={{ background: 'var(--card-bg)', color: 'var(--text-main)' }}>Select company size...</option>
+                        {COMPANY_SIZES.map(s => <option key={s} value={s} style={{ background: 'var(--card-bg)', color: 'var(--text-main)' }}>{s}</option>)}
                       </select>
                     </div>
-                    {errors.companySize && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.companySize}</span>}
+                    {errors.companySize && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.companySize}</span>}
                   </div>
 
                   {/* GST + Website in row */}
                   <div className="row g-3 mb-3">
                     <div className="col-6">
-                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>GST Number (optional)</label>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>GST Number (optional)</label>
                       <div style={{ position: 'relative' }}>
-                        <i className="bi bi-file-earmark-text" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <i className="bi bi-file-earmark-text" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                         <input type="text" style={inputStyle('gstNumber')} placeholder="22AAAAA0000A1Z5" value={form.gstNumber} onChange={e => update('gstNumber', e.target.value.toUpperCase())} />
                       </div>
                     </div>
                     <div className="col-6">
-                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Website (optional)</label>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Website (optional)</label>
                       <div style={{ position: 'relative' }}>
-                        <i className="bi bi-globe" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <i className="bi bi-globe" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                         <input type="text" style={inputStyle('website')} placeholder="www.yourcompany.com" value={form.website} onChange={e => update('website', e.target.value)} />
                       </div>
                     </div>
@@ -235,32 +238,32 @@ const IndustryRegister = () => {
 
                   {/* Contact Person */}
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Contact Person Name *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Contact Person Name *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-person" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <i className="bi bi-person" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                       <input type="text" style={inputStyle('contactPerson')} placeholder="HR Manager / Owner name" value={form.contactPerson} onChange={e => update('contactPerson', toTitleCase(e.target.value))} />
                     </div>
-                    {errors.contactPerson && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.contactPerson}</span>}
+                    {errors.contactPerson && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.contactPerson}</span>}
                   </div>
 
                   {/* Phone */}
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Business Phone *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Business Phone *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-telephone" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <i className="bi bi-telephone" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                       <input type="text" style={inputStyle('phone')} placeholder="e.g. 9876543210" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, ''))} />
                     </div>
-                    {errors.phone && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.phone}</span>}
+                    {errors.phone && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.phone}</span>}
                   </div>
 
                   {/* Address */}
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Business Address *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Business Address *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-geo-alt" style={{ position: 'absolute', left: 14, top: 14, color: '#94a3b8' }} />
+                      <i className="bi bi-geo-alt" style={{ position: 'absolute', left: 14, top: 14, color: 'var(--text-muted)' }} />
                       <textarea rows={2} style={{ ...inputStyle('address'), paddingTop: 12, resize: 'none', lineHeight: 1.5 }} placeholder="Factory / office full address" value={form.address} onChange={e => update('address', toTitleCase(e.target.value))} />
                     </div>
-                    {errors.address && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.address}</span>}
+                    {errors.address && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.address}</span>}
                   </div>
                 </div>
               )}
@@ -268,58 +271,58 @@ const IndustryRegister = () => {
               {/* ── Step 2: Account Details ── */}
               {step === 2 && (
                 <div>
-                  <h6 style={{ color: '#0a2540', fontWeight: 800, marginBottom: 20 }}>🔐 Login Credentials</h6>
+                  <h6 style={{ color: 'var(--text-main)', fontWeight: 800, marginBottom: 20 }}>🔐 Login Credentials</h6>
 
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Business Email Address *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Business Email Address *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-envelope" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <i className="bi bi-envelope" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                       <input type="email" style={inputStyle('email')} placeholder="contact@yourcompany.com" value={form.email} onChange={e => update('email', e.target.value)} />
                     </div>
-                    {errors.email && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.email}</span>}
+                    {errors.email && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.email}</span>}
                   </div>
 
                   <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Password *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Password *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-lock" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <i className="bi bi-lock" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                       <input type={showPassword ? 'text' : 'password'} style={inputStyle('password')} placeholder="Min 8 chars, 1 uppercase, 1 number, 1 symbol" value={form.password} onChange={e => update('password', e.target.value)} />
-                      <button type="button" onClick={() => setShowPassword(p => !p)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}>
+                      <button type="button" onClick={() => setShowPassword(p => !p)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }}>
                         <i className={`bi bi-eye${showPassword ? '-slash' : ''}`} />
                       </button>
                     </div>
-                    {errors.password && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.password}</span>}
+                    {errors.password && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.password}</span>}
                     {/* Password strength hint */}
                     <div style={{ marginTop: 8, display: 'flex', gap: 4 }}>
                       {['1 uppercase', '1 number', '1 symbol', '8+ chars'].map((hint, i) => {
                         const checks = [/[A-Z]/.test(form.password), /\d/.test(form.password), /[@$!%*?&#]/.test(form.password), form.password.length >= 8];
-                        return <span key={hint} style={{ flex: 1, height: 4, borderRadius: 4, background: checks[i] ? '#22c55e' : '#e2e8f0', transition: 'all 0.3s' }} />;
+                        return <span key={hint} style={{ flex: 1, height: 4, borderRadius: 4, background: checks[i] ? 'var(--success)' : 'var(--border-color)', transition: 'all 0.3s' }} />;
                       })}
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                       {['Uppercase', 'Number', 'Symbol', '8+ chars'].map((label, i) => {
                         const checks = [/[A-Z]/.test(form.password), /\d/.test(form.password), /[@$!%*?&#]/.test(form.password), form.password.length >= 8];
-                        return <span key={label} style={{ flex: 1, fontSize: '0.6rem', color: checks[i] ? '#16a34a' : '#94a3b8', fontWeight: 600 }}>{label}</span>;
+                        return <span key={label} style={{ flex: 1, fontSize: '0.6rem', color: checks[i] ? 'var(--success)' : 'var(--text-muted)', fontWeight: 600 }}>{label}</span>;
                       })}
                     </div>
                   </div>
 
                    <div className="mb-3">
-                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Confirm Password *</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Confirm Password *</label>
                     <div style={{ position: 'relative' }}>
-                      <i className="bi bi-shield-lock" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <i className="bi bi-shield-lock" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                       <input type="password" style={inputStyle('confirmPassword')} placeholder="Re-enter your password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} />
                     </div>
-                    {errors.confirmPassword && <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>{errors.confirmPassword}</span>}
+                    {errors.confirmPassword && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.confirmPassword}</span>}
                     {form.confirmPassword && form.password !== form.confirmPassword && (
-                      <span style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 600, display: 'block', marginTop: 4 }}>
+                      <span style={{ color: 'var(--danger)', fontSize: '0.75rem', fontWeight: 600, display: 'block', marginTop: 4 }}>
                         ❌ Passwords do not match!
                       </span>
                     )}
                   </div>
 
                   {/* Security note */}
-                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '12px 16px', fontSize: '0.78rem', color: '#1d4ed8', lineHeight: 1.6 }}>
+                  <div style={{ background: theme === 'dark' ? 'rgba(37,99,235,0.1)' : '#eff6ff', border: '1px solid var(--border-color)', borderRadius: 12, padding: '12px 16px', fontSize: '0.78rem', color: theme === 'dark' ? '#60a5fa' : '#1d4ed8', lineHeight: 1.6 }}>
                     <i className="bi bi-shield-check me-2"></i>
                     Your credentials are encrypted and stored securely. QuickLabour will never share your company data with third parties.
                   </div>
@@ -329,7 +332,7 @@ const IndustryRegister = () => {
               {/* ── Step 3: Confirm & Submit ── */}
               {step === 3 && (
                 <div>
-                  <h6 style={{ color: '#0a2540', fontWeight: 800, marginBottom: 20 }}>✅ Review & Confirm</h6>
+                  <h6 style={{ color: 'var(--text-main)', fontWeight: 800, marginBottom: 20 }}>✅ Review & Confirm</h6>
 
                   {/* Summary cards */}
                   {[
@@ -343,23 +346,23 @@ const IndustryRegister = () => {
                     ...(form.gstNumber ? [{ label: 'GST Number', value: form.gstNumber, icon: 'bi-file-earmark-text' }] : []),
                     ...(form.website ? [{ label: 'Website', value: form.website, icon: 'bi-globe' }] : []),
                   ].map(({ label, value, icon }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
-                      <i className={`bi ${icon}`} style={{ color: '#0d6efd', marginTop: 2, width: 16, flexShrink: 0 }} />
+                    <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <i className={`bi ${icon}`} style={{ color: 'var(--primary)', marginTop: 2, width: 16, flexShrink: 0 }} />
                       <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>{label}</div>
-                        <div style={{ fontSize: '0.88rem', color: '#0a2540', fontWeight: 700 }}>{value}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{label}</div>
+                        <div style={{ fontSize: '0.88rem', color: 'var(--text-main)', fontWeight: 700 }}>{value}</div>
                       </div>
                     </div>
                   ))}
 
                   {apiError && (
-                    <div style={{ background: '#fff5f5', border: '1.5px solid #fecaca', borderRadius: 12, padding: '12px 16px', marginTop: 16, color: '#dc2626', fontSize: '0.85rem', fontWeight: 600 }}>
+                    <div style={{ background: theme === 'dark' ? 'rgba(239, 68, 68, 0.1)' : '#fff5f5', border: '1.5px solid var(--danger)', borderRadius: 12, padding: '12px 16px', marginTop: 16, color: 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>
                       <i className="bi bi-exclamation-circle me-2" />
                       {apiError}
                     </div>
                   )}
 
-                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 16px', marginTop: 16, fontSize: '0.78rem', color: '#15803d', lineHeight: 1.6 }}>
+                  <div style={{ background: theme === 'dark' ? 'rgba(16,185,129,0.1)' : '#f0fdf4', border: '1px solid var(--border-color)', borderRadius: 12, padding: '12px 16px', marginTop: 16, fontSize: '0.78rem', color: theme === 'dark' ? '#34d399' : '#15803d', lineHeight: 1.6 }}>
                     <i className="bi bi-check-circle me-2" />
                     By registering, you agree to QuickLabour's Terms of Service and confirm this is a legitimate business entity.
                   </div>
@@ -369,16 +372,16 @@ const IndustryRegister = () => {
               {/* Navigation Buttons */}
               <div className="d-flex gap-3 mt-4">
                 {step > 1 && (
-                  <button type="button" onClick={prevStep} style={{ flex: 1, padding: '12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontWeight: 700, background: '#fff', cursor: 'pointer', color: '#475569', fontSize: '0.88rem' }}>
+                  <button type="button" onClick={prevStep} style={{ flex: 1, padding: '12px', border: '1.5px solid var(--border-color)', borderRadius: 12, fontWeight: 700, background: 'var(--card-bg)', cursor: 'pointer', color: 'var(--text-main)', fontSize: '0.88rem' }}>
                     ← Back
                   </button>
                 )}
                 {step < 3 ? (
-                  <button type="button" onClick={nextStep} style={{ flex: 2, padding: '12px', border: 'none', borderRadius: 12, fontWeight: 800, background: 'linear-gradient(135deg, #0a2540, #0d6efd)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <button type="button" onClick={nextStep} style={{ flex: 2, padding: '12px', border: 'none', borderRadius: 12, fontWeight: 800, background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem' }}>
                     Continue →
                   </button>
                 ) : (
-                  <button type="submit" disabled={loading} style={{ flex: 2, padding: '12px', border: 'none', borderRadius: 12, fontWeight: 800, background: loading ? '#94a3b8' : 'linear-gradient(135deg, #15803d, #22c55e)', color: '#fff', cursor: loading ? 'default' : 'pointer', fontSize: '0.9rem' }}>
+                  <button type="submit" disabled={loading} style={{ flex: 2, padding: '12px', border: 'none', borderRadius: 12, fontWeight: 800, background: loading ? 'var(--border-color)' : 'var(--success)', color: '#fff', cursor: loading ? 'default' : 'pointer', fontSize: '0.9rem' }}>
                     {loading ? (
                       <><span className="spinner-border spinner-border-sm me-2" role="status" />{' '}Creating Account...</>
                     ) : (

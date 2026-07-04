@@ -863,8 +863,8 @@ const WorkerDashboard = () => {
       return;
     }
     const amt = Number(withdrawAmount);
-    if (amt > walletBalance) {
-      showClassyAlert("Insufficient wallet balance.", "Insufficient Balance");
+    if (walletBalance - amt < 50) {
+      showClassyAlert("Insufficient wallet balance. A minimum balance of ₹50 must be maintained in your wallet after withdrawal.", "Insufficient Balance");
       return;
     }
 
@@ -1171,7 +1171,7 @@ const WorkerDashboard = () => {
             
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="d-flex align-items-center justify-content-between mb-2">
-                <span className="badge px-3 py-1.5 rounded-pill fw-800 d-flex align-items-center gap-1" style={{ fontSize: '0.68rem', letterSpacing: '0.8px', background: 'linear-gradient(135deg, #ffc107 0%, #ff8f00 100%)', color: '#0f172a', textTransform: 'uppercase' }}>
+                <span className="badge px-3 py-1.5 rounded-pill fw-800 d-flex align-items-center gap-1" style={{ fontSize: '0.68rem', letterSpacing: '0.8px', background: 'linear-gradient(135deg, #ffc107 0%, #ff8f00 100%)', color: 'var(--text-main)', textTransform: 'uppercase' }}>
                   <i className="bi bi-lightning-charge-fill animate-pulse"></i> New Invitation
                 </span>
                 <button
@@ -1403,7 +1403,7 @@ const WorkerDashboard = () => {
                 style={{ 
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', 
                   border: '1.5px solid rgba(245, 166, 35, 0.2)',
-                  background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.03), #ffffff)',
+                  background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.05), var(--card-bg))',
                   boxShadow: '0 4px 6px -1px rgba(245, 166, 35, 0.05)',
                   minHeight: '90px'
                 }}
@@ -1541,7 +1541,7 @@ const WorkerDashboard = () => {
                           <div className="d-flex justify-content-between align-items-start mb-3">
                             <div>
                               <span className="badge bg-primary-subtle text-primary small fw-700" style={{ fontSize: '0.7rem' }}>ONGOING PROJECT</span>
-                              <h5 className="fw-700 mb-1 mt-1" style={{ color: '#0a2540' }}>{job.title}</h5>
+                              <h5 className="fw-700 mb-1 mt-1" style={{ color: 'var(--text-main)' }}>{job.title}</h5>
                               <span className="text-muted small fw-600">
                                 <i className="bi bi-calendar3 me-1"></i>Hired on {new Date(job.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                               </span>
@@ -1769,7 +1769,7 @@ const WorkerDashboard = () => {
                           <div className="d-flex justify-content-between align-items-start mb-3">
                             <div>
                               <span className="badge bg-secondary-subtle text-secondary small fw-700" style={{ fontSize: '0.7rem' }}>COMPLETED PROJECT</span>
-                              <h5 className="fw-700 mb-1 mt-1" style={{ color: '#0a2540' }}>{job.title}</h5>
+                              <h5 className="fw-700 mb-1 mt-1" style={{ color: 'var(--text-main)' }}>{job.title}</h5>
                               <span className="text-muted small fw-600">
                                 <i className="bi bi-calendar-check me-1"></i>Completed on {new Date(job.updatedAt || job.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                               </span>
@@ -1874,7 +1874,7 @@ const WorkerDashboard = () => {
             {/* Sidebar */}
             <div className="col-lg-4">
               <div className="dashboard-card mb-4">
-                <h5 className="fw-700 mb-3" style={{ color: '#0a2540' }}>Worker Profile</h5>
+                <h5 className="fw-700 mb-3" style={{ color: 'var(--text-main)' }}>Worker Profile</h5>
                 <div className="text-center py-3 border-bottom mb-3">
                   <img
                     src={profileAvatar}
@@ -1944,9 +1944,9 @@ const WorkerDashboard = () => {
                   onClick={handleOpenEditModal}
                   className="btn w-100 mt-2 d-flex align-items-center justify-content-center gap-2 py-2"
                   style={{
-                    background: '#f1f5f9',
+                    background: 'var(--bg-surface-hover)',
                     border: '1px dashed #cbd5e1',
-                    color: '#475569',
+                    color: 'var(--text-muted)',
                     borderRadius: '12px',
                     fontWeight: '700',
                     fontSize: '0.88rem',
@@ -2000,7 +2000,7 @@ const WorkerDashboard = () => {
               </div>
 
               <div className="dashboard-card">
-                <h5 className="fw-700 mb-3" style={{ color: '#0a2540' }}>Earnings Progress</h5>
+                <h5 className="fw-700 mb-3" style={{ color: 'var(--text-main)' }}>Earnings Progress</h5>
                 <div className="mb-3">
                   <div className="d-flex justify-content-between small mb-1 fw-700 text-muted">
                     <span>Monthly Goal (₹30,000)</span>
@@ -2037,9 +2037,9 @@ const WorkerDashboard = () => {
 
       {/* ── Edit Profile Modal ── */}
       {showEditModal && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               
               {/* Header */}
               <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', borderBottom: 'none' }}>
@@ -2203,12 +2203,12 @@ const WorkerDashboard = () => {
 
       {/* ── GPS Map Modal ── */}
       {showMapModal && mapJob && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(10px)', zIndex: 1070 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(10px)', zIndex: 1070 }}>
           <div className="modal-dialog modal-dialog-centered modal-lg" style={{ maxWidth: '850px' }}>
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', height: '80vh', display: 'flex', flexDirection: 'column' }}>
               
               {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #0a2540 0%, #1a3a5c 100%)', borderBottom: 'none' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'var(--navbar-bg)', borderBottom: '1px solid var(--border-color)', borderBottom: 'none' }}>
                 <div>
                   <h5 className="modal-title fw-800 m-0 d-flex align-items-center gap-2">
                     <i className="bi bi-compass-fill text-warning animate-bounce" style={{ fontSize: '1.25rem' }}></i>
@@ -2222,7 +2222,7 @@ const WorkerDashboard = () => {
               </div>
 
               {/* Map Iframe container */}
-              <div className="modal-body p-0" style={{ flex: 1, overflow: 'hidden', background: '#f8fafc', position: 'relative' }}>
+              <div className="modal-body p-0" style={{ flex: 1, overflow: 'hidden', background: 'var(--bg-app)', position: 'relative' }}>
                 <iframe
                   title="GPS Navigation Route"
                   width="100%"
@@ -2288,7 +2288,7 @@ const WorkerDashboard = () => {
 
       {/* ── Purchase Subscription Plan Modal ── */}
       {showSubscriptionModal && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060, fontFamily: "'Poppins', sans-serif" }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060, fontFamily: "'Poppins', sans-serif" }}>
           <style>{`
             @keyframes fadeIn {
               from { opacity: 0; transform: scale(0.96) translateY(12px); }
@@ -2313,10 +2313,10 @@ const WorkerDashboard = () => {
             }
           `}</style>
           <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               
               {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #0a2540 0%, #1a3a5c 100%)', borderBottom: 'none' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'var(--navbar-bg)', borderBottom: '1px solid var(--border-color)', borderBottom: 'none' }}>
                 <h5 className="modal-title fw-800 m-0 d-flex align-items-center gap-2">
                   <i className="bi bi-lightning-charge-fill animate-bounce" style={{ color: '#f5a623', fontSize: '1.25rem' }}></i>
                   Premium Subscriptions & Plans
@@ -2340,9 +2340,9 @@ const WorkerDashboard = () => {
                 ) : (
                   <>
                     <div className="text-center mb-4">
-                      <h4 className="fw-900" style={{ color: '#0a2540', letterSpacing: '-0.02em' }}>⚡ Boost Your Workforce Profile</h4>
+                      <h4 className="fw-900" style={{ color: 'var(--text-main)', letterSpacing: '-0.02em' }}>⚡ Boost Your Workforce Profile</h4>
                       <p className="text-muted small mx-auto" style={{ maxWidth: '600px', fontSize: '0.92rem' }}>
-                        You've enjoyed your <span className="badge bg-warning bg-opacity-20 text-warning-emphasis fw-800 px-2 py-1 rounded" style={{ color: '#0a2540', background: 'rgba(245, 166, 35, 0.15)', border: '1px solid rgba(245, 166, 35, 0.3)' }}>2 FREE job accepts</span>. 
+                        You've enjoyed your <span className="badge bg-warning bg-opacity-20 text-warning-emphasis fw-800 px-2 py-1 rounded" style={{ color: 'var(--text-main)', background: 'rgba(245, 166, 35, 0.15)', border: '1px solid rgba(245, 166, 35, 0.3)' }}>2 FREE job accepts</span>. 
                         Subscribe to a premium plan to gain high-priority tokens. Every manual job acceptance costs only <strong className="text-dark">10 tokens</strong>.
                       </p>
                     </div>
@@ -2358,7 +2358,7 @@ const WorkerDashboard = () => {
                             cursor: 'pointer',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             border: selectedPlan === 'basic' ? '2.5px solid #0d6efd' : '1.5px solid #e8edf5',
-                            background: selectedPlan === 'basic' ? 'linear-gradient(135deg, rgba(13, 110, 253, 0.04), #ffffff)' : '#ffffff',
+                            background: selectedPlan === 'basic' ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.1), var(--card-bg))' : 'var(--card-bg)',
                             boxShadow: selectedPlan === 'basic' ? '0 20px 25px -5px rgba(13, 110, 253, 0.15), 0 10px 10px -5px rgba(13, 110, 253, 0.08)' : '0 4px 6px -1px rgba(0, 0, 0, 0.02)',
                             transform: selectedPlan === 'basic' ? 'translateY(-6px)' : 'none',
                           }}
@@ -2377,7 +2377,7 @@ const WorkerDashboard = () => {
                           </div>
                           
                           <div className="plan-price-info">
-                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: '#0a2540', fontSize: '2rem' }}>₹100</h2>
+                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: 'var(--text-main)', fontSize: '2rem' }}>₹100</h2>
                             <div className="small text-muted font-monospace mt-1 plan-gst">+ 5% GST (₹5)</div>
                           </div>
                           
@@ -2397,7 +2397,7 @@ const WorkerDashboard = () => {
                             cursor: 'pointer',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             border: selectedPlan === 'standard' ? '2.5px solid #f5a623' : '1.5px solid #e8edf5',
-                            background: selectedPlan === 'standard' ? 'linear-gradient(135deg, rgba(245, 166, 35, 0.04), #ffffff)' : '#ffffff',
+                            background: selectedPlan === 'standard' ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), var(--card-bg))' : 'var(--card-bg)',
                             boxShadow: selectedPlan === 'standard' ? '0 25px 30px -5px rgba(245, 166, 35, 0.2), 0 12px 12px -5px rgba(245, 166, 35, 0.1)' : '0 4px 6px -1px rgba(0, 0, 0, 0.02)',
                             transform: selectedPlan === 'standard' ? 'translateY(-6px)' : 'none',
                           }}
@@ -2417,7 +2417,7 @@ const WorkerDashboard = () => {
                           </div>
                           
                           <div className="plan-price-info">
-                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: '#0a2540', fontSize: '2rem' }}>₹200</h2>
+                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: 'var(--text-main)', fontSize: '2rem' }}>₹200</h2>
                             <div className="small text-muted font-monospace mt-1 plan-gst">+ 5% GST (₹10)</div>
                           </div>
                           
@@ -2437,17 +2437,17 @@ const WorkerDashboard = () => {
                             cursor: 'pointer',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             border: selectedPlan === 'premium' ? '2.5px solid #0a2540' : '1.5px solid #e8edf5',
-                            background: selectedPlan === 'premium' ? 'linear-gradient(135deg, rgba(10, 37, 64, 0.04), #ffffff)' : '#ffffff',
+                            background: selectedPlan === 'premium' ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.15), var(--card-bg))' : 'var(--card-bg)',
                             boxShadow: selectedPlan === 'premium' ? '0 20px 25px -5px rgba(10, 37, 64, 0.15), 0 10px 10px -5px rgba(10, 37, 64, 0.08)' : '0 4px 6px -1px rgba(0, 0, 0, 0.02)',
                             transform: selectedPlan === 'premium' ? 'translateY(-6px)' : 'none',
                           }}
                         >
-                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3 plan-icon-container" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: '#0a2540', background: 'rgba(10, 37, 64, 0.1)' }}>
+                          <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3 plan-icon-container" style={{ width: '48px', height: '48px', fontSize: '1.25rem', color: 'var(--text-main)', background: 'rgba(10, 37, 64, 0.1)' }}>
                             <i className="bi bi-crown-fill"></i>
                           </div>
                           
                           <div className="plan-header-info">
-                            <div className="fw-800 small uppercase mb-2 tracking-wider plan-title" style={{ fontSize: '0.75rem', color: '#0a2540' }}>PREMIUM ELITE</div>
+                            <div className="fw-800 small uppercase mb-2 tracking-wider plan-title" style={{ fontSize: '0.75rem', color: 'var(--text-main)' }}>PREMIUM ELITE</div>
                             <div className="plan-badge-container">
                               <div className="badge text-white fw-800 rounded-pill px-3 py-2" style={{ fontSize: '0.82rem', letterSpacing: '0.03em', background: '#0a2540' }}>
                                 +460 Tokens
@@ -2456,13 +2456,13 @@ const WorkerDashboard = () => {
                           </div>
                           
                           <div className="plan-price-info">
-                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: '#0a2540', fontSize: '2rem' }}>₹500</h2>
+                            <h2 className="fw-900 mt-1 mb-0 plan-price" style={{ color: 'var(--text-main)', fontSize: '2rem' }}>₹500</h2>
                             <div className="small text-muted font-monospace mt-1 plan-gst">+ 5% GST (₹25)</div>
                           </div>
                           
                           <hr className="my-3 opacity-10" />
                           <div className="d-flex flex-column align-items-center gap-2 plan-features-info">
-                            <span className="small text-muted fw-600"><i className="bi bi-check2-circle me-1" style={{ color: '#0a2540' }}></i>Accept 46 Jobs</span>
+                            <span className="small text-muted fw-600"><i className="bi bi-check2-circle me-1" style={{ color: 'var(--text-main)' }}></i>Accept 46 Jobs</span>
                           </div>
                         </div>
                       </div>
@@ -2665,15 +2665,15 @@ const WorkerDashboard = () => {
 
                     {/* Receipt Breakdown & Simulate Payment */}
                     <div className="p-4 rounded-24 border mb-4 order-invoice-card" style={{
-                      background: '#f8fafc',
+                      background: 'var(--bg-app)',
                       border: '1px solid #e2e8f0',
                       boxShadow: 'inset 0 2px 4px 0 rgba(0,0,0,0.02)'
                     }}>
                       <div className="d-flex align-items-center gap-2 mb-3">
-                        <div className="bg-white p-2 rounded-10 border shadow-sm d-flex align-items-center justify-content-center" style={{ width: '36px', height: '36px', fontSize: '1rem', color: '#64748b' }}>
+                        <div className="bg-white p-2 rounded-10 border shadow-sm d-flex align-items-center justify-content-center" style={{ width: '36px', height: '36px', fontSize: '1rem', color: 'var(--text-muted)' }}>
                           <i className="bi bi-receipt"></i>
                         </div>
-                        <h6 className="fw-800 m-0" style={{ color: '#0a2540', fontSize: '1.05rem' }}>Order Invoice Breakdown</h6>
+                        <h6 className="fw-800 m-0" style={{ color: 'var(--text-main)', fontSize: '1.05rem' }}>Order Invoice Breakdown</h6>
                       </div>
 
                       <div className="d-flex justify-content-between py-2 border-bottom border-dashed text-muted" style={{ fontSize: '0.88rem' }}>
@@ -2696,7 +2696,7 @@ const WorkerDashboard = () => {
                       </div>
                       <div className="d-flex justify-content-between pt-3 text-dark">
                         <span className="fw-900" style={{ fontSize: '1.05rem' }}>Total Payable Amount:</span>
-                        <strong className="fw-900" style={{ fontSize: '1.35rem', letterSpacing: '-0.02em', color: '#0a2540' }}>
+                        <strong className="fw-900" style={{ fontSize: '1.35rem', letterSpacing: '-0.02em', color: 'var(--text-main)' }}>
                           ₹{showCardForm && subPaymentMethod === 'wallet' 
                             ? (selectedPlan === 'basic' ? '99' : selectedPlan === 'standard' ? '199' : '499') 
                             : (selectedPlan === 'basic' ? '105' : selectedPlan === 'standard' ? '210' : '525')}.00
@@ -2732,7 +2732,7 @@ const WorkerDashboard = () => {
                             : selectedPlan === 'standard'
                               ? 'linear-gradient(135deg, #f5a623, #e09410)'
                               : 'linear-gradient(135deg, #0a2540, #1a3a5c)',
-                          color: selectedPlan === 'standard' ? '#0a2540' : '#ffffff',
+                          color: '#ffffff',
                           fontWeight: '800',
                           boxShadow: selectedPlan === 'basic'
                             ? '0 10px 15px -3px rgba(13, 110, 253, 0.3)'
@@ -2772,12 +2772,12 @@ const WorkerDashboard = () => {
 
       {/* ── Unified Wallet Hub Modal ── */}
       {showWalletHubModal && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               
               {/* Header */}
-              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)', borderBottom: 'none' }}>
+              <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)', borderBottom: 'none' }}>
                 <div className="d-flex align-items-center gap-3">
                   <div className="rounded-3 p-2 bg-white bg-opacity-20 d-flex align-items-center justify-content-center" style={{ width: '45px', height: '45px' }}>
                     <i className="bi bi-wallet2 fs-4"></i>
@@ -2842,7 +2842,7 @@ const WorkerDashboard = () => {
                     </p>
 
                     {/* QR Container */}
-                    <div className="d-inline-block p-4 bg-white rounded-24 border mb-4 shadow-sm" style={{ border: '2px solid #e2e8f0' }}>
+                    <div className="d-inline-block p-4 bg-white rounded-24 border mb-4 shadow-sm" style={{ border: '2px solid var(--border-color)' }}>
                       <img 
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${sessionStorage.getItem('userId') || 'worker-id-demo'}`}
                         alt="Labour Wallet QR Code"
@@ -3210,7 +3210,7 @@ const WorkerDashboard = () => {
                             type="text"
                             maxLength="4"
                             className="form-control text-center font-monospace fw-800 fs-3"
-                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
+                            style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid var(--border-color)', borderRadius: '12px' }}
                             placeholder="••••"
                             value={withdrawOtp}
                             onChange={(e) => setWithdrawOtp(e.target.value.replace(/\D/g, ''))}
@@ -3360,7 +3360,7 @@ const WorkerDashboard = () => {
       {showSosModal && (
         <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: '#ff3b30', borderBottom: 'none' }}>
                 <h5 className="modal-title fw-800 m-0">🚨 Emergency SOS safety system</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowSosModal(false)}></button>
@@ -3464,9 +3464,9 @@ const WorkerDashboard = () => {
 
       {/* Client No-Show Modal */}
       {showNoShowModal && noShowJob && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', borderBottom: 'none' }}>
                 <h5 className="modal-title fw-800 m-0">📷 Visit Compensation Proof</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowNoShowModal(false)}></button>
@@ -3540,9 +3540,9 @@ const WorkerDashboard = () => {
 
       {/* Worker Dispute Modal */}
       {showWorkerDisputeModal && disputeJob && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div className="modal-header text-white px-4 py-3 border-0 d-flex justify-content-between align-items-center" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', borderBottom: 'none' }}>
                 <h5 className="modal-title fw-800 m-0">⚖️ File a Dispute Case</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowWorkerDisputeModal(false)}></button>
@@ -3619,9 +3619,9 @@ const WorkerDashboard = () => {
 
       {/* ── Classy Custom Alert Modal ── */}
       {classyAlert.show && (
-        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', zIndex: 1100 }}>
           <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '400px' }}>
-            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: '#ffffff' }}>
+            <div className="modal-content rounded-24 shadow border-0 overflow-hidden text-center p-4 animate-scale-up" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div className="mb-3">
                 {classyAlert.type === 'danger' || classyAlert.type === 'error' ? (
                   <div className="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger rounded-circle animate-pulse" style={{ width: '64px', height: '64px' }}>

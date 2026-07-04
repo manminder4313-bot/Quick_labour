@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 
 const getAvatarUrl = (avatar, name) => {
   if (!avatar || avatar.includes('images.unsplash.com')) {
@@ -11,6 +12,7 @@ const getAvatarUrl = (avatar, name) => {
 const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const [user, setUser] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -69,8 +71,31 @@ const Navbar = () => {
             <li className="nav-item">
               <NavLink className="nav-link" to="/contact">Contact</NavLink>
             </li>
+
+            <li className="nav-item ms-lg-2 me-lg-3 my-2 my-lg-0 d-flex align-items-center">
+              <button 
+                onClick={toggleTheme} 
+                className="btn btn-theme-toggle border-0 text-white p-0 d-flex align-items-center justify-content-center"
+                style={{ 
+                  background: 'rgba(255,255,255,0.08)', 
+                  borderRadius: '50%', 
+                  width: '38px', 
+                  height: '38px',
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer'
+                }}
+                title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              >
+                {theme === 'dark' ? (
+                  <i className="bi bi-sun-fill text-warning fs-5"></i>
+                ) : (
+                  <i className="bi bi-moon-stars-fill text-warning fs-5"></i>
+                )}
+              </button>
+            </li>
             
             {user ? (
+
               <li className="nav-item dropdown ms-lg-3 mt-2 mt-lg-0" style={{ position: 'relative' }}>
                 <div 
                   className="d-flex align-items-center gap-2 cursor-pointer" 
