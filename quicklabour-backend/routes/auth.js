@@ -2,6 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Admin from '../models/Admin.js';
+import Transaction from '../models/Transaction.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -12,6 +13,43 @@ const generateToken = (id) => {
     expiresIn: '30d',
   });
 };
+
+// @desc    Check if email already exists
+// @route   POST /api/auth/check-email
+// @access  Public
+router.post('/check-email', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  try {
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.json({ exists: true, message: 'Email is already in use.' });
+    }
+    res.json({ exists: false, message: 'Email is available.' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Send OTP to email (Simulated)
+// @route   POST /api/auth/send-email-otp
+// @access  Public
+router.post('/send-email-otp', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+  const otp = Math.floor(1000 + Math.random() * 9000).toString();
+  console.log(`[EMAIL OTP SIMULATION] Sent OTP ${otp} to email ${email}`);
+  res.json({
+    success: true,
+    message: `Simulated OTP sent to ${email}`,
+    otp,
+  });
+});
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -66,6 +104,14 @@ router.post('/register', async (req, res) => {
     });
 
     if (user) {
+      await Transaction.create({
+        userId: user._id,
+        type: 'Sign-up Bonus',
+        amount: 50,
+        isCredit: true,
+        status: 'Completed',
+      });
+
       res.status(201).json({
         _id: user._id,
         fullName: user.fullName,
@@ -379,6 +425,14 @@ router.post('/subscribe', protect, async (req, res) => {
     worker.tokens = (worker.tokens || 0) + tokensToAdd;
     await worker.save();
 
+    await Transaction.create({
+      userId: worker._id,
+      type: `Subscription (${planType.toUpperCase()})`,
+      amount: total,
+      isCredit: false,
+      status: 'Completed',
+    });
+
     // Automatically add subscription money to Admin wallet
     await Admin.updateMany({}, { $inc: { walletBalance: total } });
 
@@ -433,6 +487,14 @@ router.post('/wallet/add', protect, async (req, res) => {
 
     user.walletBalance = (user.walletBalance || 0) + Number(amount);
     await user.save();
+
+    await Transaction.create({
+      userId: user._id,
+      type: `Wallet Deposit (${method.toUpperCase()})`,
+      amount: Number(amount),
+      isCredit: true,
+      status: 'Completed',
+    });
 
     if (user.role === 'admin') {
       await Admin.updateMany({}, { walletBalance: user.walletBalance });
@@ -544,6 +606,14 @@ router.post('/wallet/withdraw', protect, async (req, res) => {
     user.walletBalance = (user.walletBalance || 0) - Number(amount);
     await user.save();
 
+    await Transaction.create({
+      userId: user._id,
+      type: 'Withdrawal',
+      amount: Number(amount),
+      isCredit: false,
+      status: 'Completed',
+    });
+
     if (user.role === 'admin') {
       await Admin.updateMany({}, { walletBalance: user.walletBalance });
     }
@@ -599,6 +669,22 @@ router.post('/wallet/transfer', protect, async (req, res) => {
     await client.save();
     await worker.save();
 
+    await Transaction.create({
+      userId: client._id,
+      type: `Paid Worker (${worker.fullName})`,
+      amount: Number(amount),
+      isCredit: false,
+      status: 'Completed',
+    });
+
+    await Transaction.create({
+      userId: worker._id,
+      type: `Received Payment (${client.fullName})`,
+      amount: Number(amount),
+      isCredit: true,
+      status: 'Completed',
+    });
+
     res.json({
       success: true,
       message: `Successfully paid ₹${amount} to ${worker.fullName}!`,
@@ -653,6 +739,14 @@ router.post('/recharge-tokens-wallet', protect, async (req, res) => {
     worker.walletBalance = (worker.walletBalance || 0) - cost;
     worker.tokens = (worker.tokens || 0) + tokens;
     await worker.save();
+
+    await Transaction.create({
+      userId: worker._id,
+      type: `Token Recharge (${planType.toUpperCase()})`,
+      amount: cost,
+      isCredit: false,
+      status: 'Completed',
+    });
 
     // Automatically add recharge money to Admin wallet
     await Admin.updateMany({}, { $inc: { walletBalance: cost } });
@@ -807,6 +901,30 @@ router.post('/forgot-password/reset', async (req, res) => {
       success: true,
       message: 'Password has been reset successfully. You can now login with your new password.',
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @desc    Get user's transactions
+// @route   GET /api/auth/wallet/transactions
+// @access  Private
+router.get('/wallet/transactions', protect, async (req, res) => {
+  try {
+    const transactions = await Transaction.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    
+    // Map them to the format the frontend expects:
+    // id, date, type, amount, isCredit, status
+    const formattedTransactions = transactions.map(tx => ({
+      id: tx._id,
+      date: new Date(tx.createdAt).toLocaleString('en-IN'),
+      type: tx.type,
+      amount: tx.amount,
+      isCredit: tx.isCredit,
+      status: tx.status
+    }));
+
+    res.json(formattedTransactions);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

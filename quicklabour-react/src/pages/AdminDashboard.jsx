@@ -56,6 +56,7 @@ const AdminDashboard = () => {
   const [contacts, setContacts] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [admins, setAdmins] = useState([]);
+  const [dbTransactions, setDbTransactions] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -109,6 +110,7 @@ const AdminDashboard = () => {
     };
     txs.unshift(newTx);
     localStorage.setItem(key, JSON.stringify(txs));
+    fetchTransactions();
   };
 
   const handleAddMoneySubmit = async (e) => {
@@ -192,6 +194,8 @@ const AdminDashboard = () => {
   // Modal state for viewing documents
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [selectedCredentials, setSelectedCredentials] = useState(null);
+  const [selectedInquiry, setSelectedInquiry] = useState(null);
+  const [selectedSos, setSelectedSos] = useState(null);
 
 
 
@@ -212,6 +216,100 @@ const AdminDashboard = () => {
   const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [disputes, setDisputes] = useState([]);
+
+  // Expanded cases state for complaints
+  const [expandedCases, setExpandedCases] = useState({});
+
+  const toggleExpandCase = (id) => {
+    setExpandedCases(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const getCaseId = (disp, index) => {
+    try {
+      const dateObj = new Date(disp.createdAt || new Date());
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const serial = String((index % 99) + 1).padStart(2, '0');
+      return `${year}${month}${day}${serial}`;
+    } catch (e) {
+      return `20260705${String((index % 99) + 1).padStart(2, '0')}`;
+    }
+  };
+
+  const getSosCaseId = (alert, index) => {
+    try {
+      const dateObj = new Date(alert.createdAt || new Date());
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const serial = String((index % 99) + 1).padStart(2, '0');
+      return `${month}${day}${serial}`;
+    } catch (e) {
+      return `0707${String((index % 99) + 1).padStart(2, '0')}`;
+    }
+  };
+
+  const handleShowContact = (role, name) => {
+    let email = "N/A";
+    let phone = "N/A";
+
+    if (role === 'Client') {
+      const clientObj = clients.find(c => c.fullName.toLowerCase() === name.toLowerCase());
+      if (clientObj) {
+        email = clientObj.email || "N/A";
+        phone = clientObj.phone || "N/A";
+      }
+    } else {
+      const workerObj = workers.find(w => w.fullName.toLowerCase() === name.toLowerCase());
+      if (workerObj) {
+        email = workerObj.email || "N/A";
+        phone = workerObj.phone || "N/A";
+      }
+    }
+
+    showClassyAlert(
+      `Name: ${name}\nEmail: ${email}\nPhone: ${phone}`,
+      `${role} Contact Details`,
+      "info"
+    );
+  };
+
+  // Reply modal states
+  const [showReplyModal, setShowReplyModal] = useState(false);
+  const [replyContact, setReplyContact] = useState(null);
+  const [replySubject, setReplySubject] = useState('');
+  const [replyBody, setReplyBody] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
+
+  const handleOpenReplyModal = (contact) => {
+    setReplyContact(contact);
+    setReplySubject(`Re: ${contact.subject || 'QuickLabour Enquiry'}`);
+    setReplyBody(`Hello ${contact.name},\n\nRegarding your enquiry: "${contact.message}"\n\n`);
+    setShowReplyModal(true);
+  };
+
+  const handleSendReply = async () => {
+    if (!replySubject.trim() || !replyBody.trim()) {
+      showClassyAlert("Please fill in both subject and message fields.", "Fields Required", "warning");
+      return;
+    }
+    setIsSendingReply(true);
+    try {
+      await api.post(`/admin/contacts/${replyContact._id}/reply`, {
+        from: 'quicklaboure@gmail.com',
+        to: replyContact.email,
+        subject: replySubject,
+        message: replyBody
+      });
+      showClassyAlert(`Email reply successfully dispatched from quicklaboure@gmail.com to ${replyContact.email}!`, 'Email Sent', 'success');
+      setShowReplyModal(false);
+      setReplyContact(null);
+    } catch (err) {
+      showClassyAlert(`Failed to send email: ${err.message}`, 'Action Failed', 'danger');
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
 
   const fetchDisputes = async () => {
     try {
@@ -251,6 +349,16 @@ const AdminDashboard = () => {
       setAdminSosAlerts(data);
     } catch (err) {
       console.error('Error fetching admin SOS alerts:', err);
+    }
+  };
+
+  const fetchTransactions = async () => {
+    try {
+      const data = await api.getWalletTransactions();
+      setDbTransactions(data || []);
+    } catch (err) {
+      console.error("Failed to fetch transactions", err);
+      setDbTransactions(getTransactions());
     }
   };
 
@@ -415,6 +523,7 @@ const AdminDashboard = () => {
       }
       await fetchAdminSosAlerts();
       await fetchDisputes();
+      await fetchTransactions();
     } catch (err) {
       console.error('fetchAdminData error:', err);
       setError(err.message || 'Failed to fetch administrative data');
@@ -684,7 +793,7 @@ const AdminDashboard = () => {
             )}
             {hasPermission('disputes') && (
               <button className={`nav-link rounded-3 fw-bold flex-fill text-center ${activeTab === 'disputes' ? 'active bg-danger text-white' : 'text-dark bg-transparent'}`} onClick={() => { setActiveTab('disputes'); setSearchTerm(''); }}>
-                ⚖️ Complain Panel ({JSON.parse(localStorage.getItem('quicklabour_disputes') || '[]').length})
+                ⚖️ Complain Panel ({disputes.length})
               </button>
             )}
             {hasPermission('overview') && (
@@ -777,8 +886,8 @@ const AdminDashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {getTransactions().length > 0 ? (
-                          getTransactions().map((tx) => (
+                        {dbTransactions.length > 0 ? (
+                          dbTransactions.map((tx) => (
                             <tr key={tx.id}>
                               <td className="font-monospace fw-bold small text-muted">{tx.id}</td>
                               <td>
@@ -808,7 +917,7 @@ const AdminDashboard = () => {
                               </td>
                               <td className="small text-muted">{tx.date}</td>
                               <td>
-                                <span className={`badge rounded-pill px-3 py-1.5 fw-bold ${tx.status === 'Success' ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'}`}>
+                                <span className={`badge rounded-pill px-3 py-1.5 fw-bold ${tx.status === 'Success' || tx.status === 'Completed' ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'}`}>
                                   {tx.status}
                                 </span>
                               </td>
@@ -1277,6 +1386,7 @@ const AdminDashboard = () => {
                   <thead className="table-light">
                     <tr>
                       <th>Worker Details</th>
+                      <th>Email</th>
                       <th>Trade Specialty</th>
                       <th>Ratings & Completed</th>
                       <th>Availability</th>
@@ -1296,6 +1406,9 @@ const AdminDashboard = () => {
                                 <span className="small text-muted">{worker.phone}</span>
                               </div>
                             </div>
+                          </td>
+                          <td>
+                            <span className="small">{worker.email || 'N/A'}</span>
                           </td>
                           <td>
                             <span className="badge bg-primary bg-opacity-10 text-primary px-3 py-2 fw-bold rounded-pill">{worker.occupation}</span>
@@ -1433,18 +1546,42 @@ const AdminDashboard = () => {
                       <div className="card rounded-4 border-0 shadow-sm p-4 h-100 position-relative bg-white">
                         <div className="d-flex justify-content-between align-items-start mb-3">
                           <div>
-                            <h5 className="fw-bold mb-1 text-dark">{contact.subject}</h5>
+                            <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                              <h5 className="fw-bold m-0 text-dark">{contact.subject}</h5>
+                              <span className="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-2.5 py-1 fw-bold" style={{ fontSize: '0.72rem' }}>
+                                ID: INQ-{contact._id.slice(-6).toUpperCase()}
+                              </span>
+                            </div>
                             <span className="small text-primary fw-semibold">{contact.name} ({contact.email})</span>
                           </div>
                           <button className="btn btn-sm btn-outline-danger border-0 rounded-circle" style={{ width: '32px', height: '32px', padding: 0 }} onClick={() => handleDelete('/admin/contacts', contact._id, setContacts, contacts)}>
                             <i className="bi bi-trash-fill"></i>
                           </button>
                         </div>
-                        <p className="text-muted small bg-light p-3 rounded-3" style={{ minHeight: '80px', whiteSpace: 'pre-wrap' }}>
+                        <p className="text-muted small bg-light p-3 rounded-3 mb-3" style={{ minHeight: '80px', whiteSpace: 'pre-wrap' }}>
                           "{contact.message}"
                         </p>
-                        <div className="text-end text-muted small mt-2">
-                          Received: {new Date(contact.createdAt).toLocaleDateString()}
+                        <div className="d-flex justify-content-between align-items-center mt-auto pt-2 border-top flex-wrap gap-2">
+                          <div className="d-flex gap-2">
+                            <button 
+                              type="button"
+                              onClick={() => setSelectedInquiry(contact)}
+                              className="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold d-flex align-items-center gap-1"
+                            >
+                              ℹ️ View Details
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => handleOpenReplyModal(contact)}
+                              className="btn btn-sm btn-primary rounded-pill px-3 fw-bold d-flex align-items-center gap-1"
+                              style={{ background: 'linear-gradient(135deg,#0d6efd,#6610f2)', border: 'none' }}
+                            >
+                              <i className="bi bi-reply-fill"></i> Reply via Email
+                            </button>
+                          </div>
+                          <div className="text-muted small" style={{ fontSize: '0.8rem' }}>
+                            Received: {new Date(contact.createdAt).toLocaleDateString()}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1595,181 +1732,222 @@ const AdminDashboard = () => {
 
               {disputes.length > 0 ? (
                 <div className="row g-4">
-                  {disputes.map((disp) => {
+                  {disputes.map((disp, index) => {
                     const isNoShow = disp.reason && disp.reason.includes('Client No-Show');
-                    
+                    const caseId = getCaseId(disp, index);
+                    const isExpanded = !!expandedCases[disp._id];
+                    const filedByLabel = disp.submittedBy === 'client' ? 'Client' : 'Labour';
+                    const filedByName = disp.submittedBy === 'client' ? disp.clientName : disp.workerName;
+
                     return (
                       <div key={disp._id} className="col-12 mb-4">
                         <div className="card rounded-4 shadow-sm border bg-white text-start overflow-hidden" style={{ borderLeft: '6px solid #dc2626' }}>
-                          <div className="row g-0">
-                            
-                            {/* Left side: Case info & actions */}
-                            <div className="col-lg-5 p-4 border-end d-flex flex-column justify-content-between">
+                          
+                          {/* Case Header Summary */}
+                          <div className="p-4 bg-white border-bottom">
+                            <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
                               <div>
-                                <div className="d-flex justify-content-between align-items-start mb-3">
-                                  <div>
-                                    <span className="badge bg-danger text-white fw-bold px-2.5 py-1 rounded-pill small" style={{ fontSize: '0.72rem' }}>
-                                      {isNoShow ? '⚠️ CLIENT NO-SHOW COMPENSATION CLAIM' : `⚖️ DISPUTE FILED BY ${disp.submittedBy.toUpperCase()}`}
-                                    </span>
-                                    <h5 className="fw-bold text-dark mt-2 mb-0">{disp.jobTitle}</h5>
-                                    <span className="small text-muted" style={{ fontSize: '0.75rem' }}>Submitted: {disp.createdAt}</span>
-                                  </div>
-                                  <div className="d-flex align-items-center gap-2">
-                                    <span className={`badge px-2 py-1 rounded-pill ${disp.status === 'Resolved' ? 'bg-success text-white' : 'bg-warning text-white'}`}>
-                                      {disp.status}
-                                    </span>
-                                    <button
-                                      className="btn btn-sm btn-outline-danger border-0 rounded-circle"
-                                      onClick={() => handleDeleteDispute(disp._id)}
-                                      title="Delete Dispute"
-                                    >
-                                      <i className="bi bi-trash-fill"></i>
-                                    </button>
-                                  </div>
+                                <div className="d-flex align-items-center gap-2 flex-wrap">
+                                  <span className="fs-5 fw-extrabold text-primary">Case ID: {caseId}</span>
+                                  <span className={`badge px-2 py-1 rounded-pill ${disp.status === 'Resolved' ? 'bg-success text-white' : 'bg-warning text-white'}`}>
+                                    {disp.status}
+                                  </span>
+                                  <span className="badge bg-danger text-white fw-bold px-2.5 py-1 rounded-pill small" style={{ fontSize: '0.72rem' }}>
+                                    {isNoShow ? '⚠️ NO-SHOW COMPLAIN' : '⚖️ STANDARD DISPUTE'}
+                                  </span>
                                 </div>
-
-                                <div className="mb-3 p-3 rounded-3" style={{ background: '#fef2f2', border: '1px solid #fee2e2' }}>
-                                  <div className="small text-dark mb-1"><strong>Worker Name:</strong> {disp.workerName}</div>
-                                  <div className="small text-dark mb-2"><strong>Client Name:</strong> {disp.clientName}</div>
-                                  <hr className="my-2 text-muted" />
-                                  <div className="small text-danger fw-bold mb-1">Incident Report:</div>
-                                  <div className="small text-dark font-monospace" style={{ fontSize: '0.82rem', lineHeight: '1.4' }}>"{disp.reason}"</div>
+                                <div className="mt-2 text-dark small d-flex flex-wrap gap-x-4 gap-y-1">
+                                  <span><strong>Client:</strong> {disp.clientName}</span>
+                                  <span><strong>Labour:</strong> {disp.workerName}</span>
+                                  <span className="text-danger fw-bold"><strong>Filed By:</strong> {filedByLabel} ({filedByName})</span>
                                 </div>
                               </div>
-
-                              <div>
-                                {disp.status !== 'Resolved' ? (
-                                  <div className="d-flex gap-2 flex-wrap mt-3">
-                                    {isNoShow ? (
-                                      <>
-                                        <button
-                                          onClick={() => handleResolveDispute(disp._id, `Approved. Visit compensation of ₹50 paid to worker (${disp.workerName}) and client (${disp.clientName}) penalized.`)}
-                                          className="btn btn-success fw-bold flex-fill rounded-12 py-2.5 text-white"
-                                          style={{ fontSize: '0.82rem' }}
-                                        >
-                                          Approve Compensation (₹50)
-                                        </button>
-                                        <button
-                                          onClick={() => handleResolveDispute(disp._id, `Rejected. Insufficient location or call logs proof.`)}
-                                          className="btn btn-outline-secondary fw-bold flex-fill rounded-12 py-2.5"
-                                          style={{ fontSize: '0.82rem' }}
-                                        >
-                                          Reject Claim
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <button
-                                          onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Client (${disp.clientName}). Worker penalized.`)}
-                                          className="btn btn-outline-primary fw-bold flex-fill rounded-12 py-2.5"
-                                          style={{ fontSize: '0.82rem' }}
-                                        >
-                                          Rule in favor of Client
-                                        </button>
-                                        <button
-                                          onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Worker (${disp.workerName}). Compensation confirmed.`)}
-                                          className="btn btn-outline-success fw-bold flex-fill rounded-12 py-2.5"
-                                          style={{ fontSize: '0.82rem' }}
-                                        >
-                                          Rule in favor of Worker
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="small text-success fw-bold p-2.5 bg-success bg-opacity-5 rounded-12 border border-success border-opacity-10 mt-3">
-                                    <i className="bi bi-shield-check me-1"></i> Resolved Decision: "{disp.resolutionDecision}"
-                                  </div>
-                                )}
+                              
+                              <div className="d-flex flex-wrap gap-2 align-items-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleShowContact('Client', disp.clientName)}
+                                  className="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold"
+                                >
+                                  📞 Contact Client
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleShowContact('Labour', disp.workerName)}
+                                  className="btn btn-sm btn-outline-secondary rounded-pill px-3 fw-bold"
+                                >
+                                  📞 Contact Labour
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandCase(disp._id)}
+                                  className={`btn btn-sm ${isExpanded ? 'btn-danger' : 'btn-success'} rounded-pill px-3 fw-bold`}
+                                >
+                                  {isExpanded ? '❌ Close Details' : '🔍 Open Case Details'}
+                                </button>
+                                <button
+                                  className="btn btn-sm btn-outline-danger border-0 rounded-circle"
+                                  onClick={() => handleDeleteDispute(disp._id)}
+                                  title="Delete Dispute"
+                                >
+                                  <i className="bi bi-trash-fill"></i>
+                                </button>
                               </div>
                             </div>
+                          </div>
 
-                            {/* Right side: Side-by-Side Evidence Review (Selfie, Call logs, and Live GPS Validation Map) */}
-                            <div className="col-lg-7 p-4 bg-light bg-opacity-50 d-flex flex-column justify-content-between">
-                              <div>
-                                <h6 className="fw-800 text-dark mb-3"><i className="bi bi-file-earmark-check-fill text-primary me-1"></i>Side-by-Side Evidence Review</h6>
-                                
-                                <div className="row g-3 mb-3">
-                                  <div className="col-6 col-sm-4 text-center">
-                                    <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>📍 Reported Photo Proof</span>
-                                    <div className="position-relative border rounded overflow-hidden shadow-sm bg-white" style={{ height: '110px' }}>
-                                      <img 
-                                        src={disp.photo} 
-                                        alt="Location Selfie" 
-                                        className="w-100 h-100" 
-                                        style={{ objectFit: 'cover', cursor: 'pointer' }} 
-                                        onClick={() => setSelectedDoc({ name: `${disp.workerName} Selfie/Location Proof`, type: 'Selfie Photo', file: disp.photo })} 
-                                      />
-                                      <div className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5" style={{ fontSize: '0.62rem', cursor: 'pointer' }}>Zoom 🔍</div>
-                                    </div>
+                          {/* Expanded Details Section */}
+                          {isExpanded && (
+                            <div className="row g-0 animate-fade-in">
+                              
+                              {/* Left side: Incident description & actions */}
+                              <div className="col-lg-5 p-4 border-end d-flex flex-column justify-content-between bg-light bg-opacity-25">
+                                <div>
+                                  <h6 className="fw-800 text-dark mb-3"><i className="bi bi-info-circle-fill text-danger me-1"></i>Complain Case Details</h6>
+                                  <div className="mb-3 p-3 rounded-3 bg-white border">
+                                    <div className="small text-dark mb-1"><strong>Job Title:</strong> {disp.jobTitle}</div>
+                                    <div className="small text-muted mb-2"><strong>Submitted:</strong> {disp.createdAt}</div>
+                                    <hr className="my-2 text-muted" />
+                                    <div className="small text-danger fw-bold mb-1">Incident Report:</div>
+                                    <div className="small text-dark font-monospace" style={{ fontSize: '0.82rem', lineHeight: '1.4' }}>"{disp.reason}"</div>
                                   </div>
-                                  
-                                  <div className="col-6 col-sm-4 text-center">
-                                    <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>📞 Call Log Screenshot</span>
-                                    <div className="position-relative border rounded overflow-hidden shadow-sm bg-white" style={{ height: '110px' }}>
-                                      <img 
-                                        src={disp.callLog} 
-                                        alt="Call Logs" 
-                                        className="w-100 h-100" 
-                                        style={{ objectFit: 'cover', cursor: 'pointer' }} 
-                                        onClick={() => setSelectedDoc({ name: `${disp.workerName} Call Log Proof`, type: 'Call Screenshot', file: disp.callLog })} 
-                                      />
-                                      <div className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5" style={{ fontSize: '0.62rem', cursor: 'pointer' }}>Zoom 🔍</div>
-                                    </div>
-                                  </div>
+                                </div>
 
-                                  <div className="col-12 col-sm-4">
-                                    <span className="d-block small text-muted fw-bold mb-1 text-center" style={{ fontSize: '0.7rem' }}>GPS Audit Info</span>
-                                    <div className="p-3 bg-white border rounded shadow-sm d-flex flex-column justify-content-center align-items-center h-100" style={{ minHeight: '110px' }}>
-                                      <span className="badge bg-danger bg-opacity-10 text-danger font-monospace mb-1.5 text-wrap w-100" style={{ fontSize: '0.65rem', padding: '6px 4px', wordBreak: 'break-all' }}>
-                                        {disp.gpsLocation || 'No GPS coordinates'}
-                                      </span>
-                                      {(() => {
-                                        const jobObj = jobs.find(j => j._id === disp.jobId);
-                                        const wCoords = parseGpsCoords(disp.gpsLocation);
-                                        if (jobObj && wCoords && jobObj.latitude && jobObj.longitude) {
-                                          const dist = getDistanceInKm(jobObj.latitude, jobObj.longitude, wCoords.lat, wCoords.lng);
-                                          const matches = parseFloat(dist) <= 0.2; // Match if within 200 meters
-                                          return (
-                                            <span className={`badge ${matches ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'} fw-800`} style={{ fontSize: '0.68rem', padding: '4px 8px' }}>
-                                              {matches ? '✅ Near Location' : `⚠️ Distant: ${dist} km`}
-                                            </span>
-                                          );
-                                        }
-                                        return <span className="small text-muted" style={{ fontSize: '0.65rem' }}>No client coords</span>;
-                                      })()}
+                                <div>
+                                  {disp.status !== 'Resolved' ? (
+                                    <div className="d-flex gap-2 flex-wrap mt-3">
+                                      {isNoShow ? (
+                                        <>
+                                          <button
+                                            onClick={() => handleResolveDispute(disp._id, `Approved. Visit compensation of ₹50 paid to worker (${disp.workerName}) and client (${disp.clientName}) penalized.`)}
+                                            className="btn btn-success fw-bold flex-fill rounded-12 py-2.5 text-white"
+                                            style={{ fontSize: '0.82rem' }}
+                                          >
+                                            Approve Compensation (₹50)
+                                          </button>
+                                          <button
+                                            onClick={() => handleResolveDispute(disp._id, `Rejected. Insufficient location or call logs proof.`)}
+                                            className="btn btn-outline-secondary fw-bold flex-fill rounded-12 py-2.5"
+                                            style={{ fontSize: '0.82rem' }}
+                                          >
+                                            Reject Claim
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <button
+                                            onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Client (${disp.clientName}). Worker penalized.`)}
+                                            className="btn btn-outline-primary fw-bold flex-fill rounded-12 py-2.5"
+                                            style={{ fontSize: '0.82rem' }}
+                                          >
+                                            Rule in favor of Client
+                                          </button>
+                                          <button
+                                            onClick={() => handleResolveDispute(disp._id, `Resolved in favor of Worker (${disp.workerName}). Compensation confirmed.`)}
+                                            className="btn btn-outline-success fw-bold flex-fill rounded-12 py-2.5"
+                                            style={{ fontSize: '0.82rem' }}
+                                          >
+                                            Rule in favor of Worker
+                                          </button>
+                                        </>
+                                      )}
                                     </div>
-                                  </div>
+                                  ) : (
+                                    <div className="small text-success fw-bold p-2.5 bg-success bg-opacity-5 rounded-12 border border-success border-opacity-10 mt-3">
+                                      <i className="bi bi-shield-check me-1"></i> Resolved Decision: "{disp.resolutionDecision}"
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
-                              {/* Map visualization section */}
-                              {(() => {
-                                const jobObj = jobs.find(j => j._id === disp.jobId);
-                                const wCoords = parseGpsCoords(disp.gpsLocation);
-                                if (jobObj && wCoords && jobObj.latitude && jobObj.longitude) {
+                              {/* Right side: Side-by-Side Evidence Review (Selfie, Call logs, and Live GPS Validation Map) */}
+                              <div className="col-lg-7 p-4 bg-light bg-opacity-50 d-flex flex-column justify-content-between">
+                                <div>
+                                  <h6 className="fw-800 text-dark mb-3"><i className="bi bi-file-earmark-check-fill text-primary me-1"></i>Side-by-Side Evidence Review</h6>
+                                  
+                                  <div className="row g-3 mb-3">
+                                    <div className="col-6 col-sm-4 text-center">
+                                      <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>📍 Reported Photo Proof</span>
+                                      <div className="position-relative border rounded overflow-hidden shadow-sm bg-white" style={{ height: '110px' }}>
+                                        <img 
+                                          src={disp.photo} 
+                                          alt="Location Selfie" 
+                                          className="w-100 h-100" 
+                                          style={{ objectFit: 'cover', cursor: 'pointer' }} 
+                                          onClick={() => setSelectedDoc({ name: `${disp.workerName} Selfie/Location Proof`, type: 'Selfie Photo', file: disp.photo })} 
+                                        />
+                                        <div className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5" style={{ fontSize: '0.62rem', cursor: 'pointer' }}>Zoom 🔍</div>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="col-6 col-sm-4 text-center">
+                                      <span className="d-block small text-muted fw-bold mb-1" style={{ fontSize: '0.7rem' }}>📞 Call Log Screenshot</span>
+                                      <div className="position-relative border rounded overflow-hidden shadow-sm bg-white" style={{ height: '110px' }}>
+                                        <img 
+                                          src={disp.callLog} 
+                                          alt="Call Logs" 
+                                          className="w-100 h-100" 
+                                          style={{ objectFit: 'cover', cursor: 'pointer' }} 
+                                          onClick={() => setSelectedDoc({ name: `${disp.workerName} Call Log Proof`, type: 'Call Screenshot', file: disp.callLog })} 
+                                        />
+                                        <div className="position-absolute bottom-0 end-0 bg-dark bg-opacity-75 text-white px-1.5 py-0.5" style={{ fontSize: '0.62rem', cursor: 'pointer' }}>Zoom 🔍</div>
+                                      </div>
+                                    </div>
+
+                                    <div className="col-12 col-sm-4">
+                                      <span className="d-block small text-muted fw-bold mb-1 text-center" style={{ fontSize: '0.7rem' }}>GPS Audit Info</span>
+                                      <div className="p-3 bg-white border rounded shadow-sm d-flex flex-column justify-content-center align-items-center h-100" style={{ minHeight: '110px' }}>
+                                        <span className="badge bg-danger bg-opacity-10 text-danger font-monospace mb-1.5 text-wrap w-100" style={{ fontSize: '0.65rem', padding: '6px 4px', wordBreak: 'break-all' }}>
+                                          {disp.gpsLocation || 'No GPS coordinates'}
+                                        </span>
+                                        {(() => {
+                                          const jobObj = jobs.find(j => j._id === disp.jobId);
+                                          const wCoords = parseGpsCoords(disp.gpsLocation);
+                                          if (jobObj && wCoords && jobObj.latitude && jobObj.longitude) {
+                                            const dist = getDistanceInKm(jobObj.latitude, jobObj.longitude, wCoords.lat, wCoords.lng);
+                                            const matches = parseFloat(dist) <= 0.2; // Match if within 200 meters
+                                            return (
+                                              <span className={`badge ${matches ? 'bg-success bg-opacity-10 text-success' : 'bg-warning bg-opacity-10 text-warning'} fw-800`} style={{ fontSize: '0.68rem', padding: '4px 8px' }}>
+                                                {matches ? '✅ Near Location' : `⚠️ Distant: ${dist} km`}
+                                              </span>
+                                            );
+                                          }
+                                          return <span className="small text-muted" style={{ fontSize: '0.65rem' }}>No client coords</span>;
+                                        })()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Map visualization section */}
+                                {(() => {
+                                  const jobObj = jobs.find(j => j._id === disp.jobId);
+                                  const wCoords = parseGpsCoords(disp.gpsLocation);
+                                  if (jobObj && wCoords && jobObj.latitude && jobObj.longitude) {
+                                    return (
+                                      <div className="mt-2 border rounded overflow-hidden shadow-sm" style={{ height: '140px', position: 'relative' }}>
+                                        <iframe
+                                          title={`Dispute Map - ${disp._id}`}
+                                          width="100%"
+                                          height="100%"
+                                          style={{ border: 'none' }}
+                                          src={`https://maps.google.com/maps?saddr=${wCoords.lat},${wCoords.lng}&daddr=${jobObj.latitude},${jobObj.longitude}&output=embed&iwloc=near`}
+                                          allowFullScreen
+                                        ></iframe>
+                                      </div>
+                                    );
+                                  }
                                   return (
-                                    <div className="mt-2 border rounded overflow-hidden shadow-sm" style={{ height: '140px', position: 'relative' }}>
-                                      <iframe
-                                        title={`Dispute Map - ${disp._id}`}
-                                        width="100%"
-                                        height="100%"
-                                        style={{ border: 'none' }}
-                                        src={`https://maps.google.com/maps?saddr=${wCoords.lat},${wCoords.lng}&daddr=${jobObj.latitude},${jobObj.longitude}&output=embed&iwloc=near`}
-                                        allowFullScreen
-                                      ></iframe>
+                                    <div className="mt-2 border rounded bg-white text-muted d-flex align-items-center justify-content-center small" style={{ height: '140px' }}>
+                                      <i className="bi bi-geo-alt-fill me-1"></i> Map path unavailable (Missing job/GPS coords)
                                     </div>
                                   );
-                                }
-                                return (
-                                  <div className="mt-2 border rounded bg-white text-muted d-flex align-items-center justify-content-center small" style={{ height: '140px' }}>
-                                    <i className="bi bi-geo-alt-fill me-1"></i> Map path unavailable (Missing job/GPS coords)
-                                  </div>
-                                );
-                              })()}
-                            </div>
+                                })()}
+                              </div>
 
-                          </div>
+                            </div>
+                          )}
+
                         </div>
                       </div>
                     );
@@ -1798,78 +1976,100 @@ const AdminDashboard = () => {
 
               {adminSosAlerts && adminSosAlerts.length > 0 ? (
                 <div className="row g-4">
-                  {adminSosAlerts.map((alert) => (
-                    <div className="col-12 col-md-6" key={alert._id}>
-                      <div className={`card border-0 shadow-sm rounded-4 p-4 h-100 ${
-                        alert.status === 'Pending' 
-                          ? 'border-start border-5 border-danger' 
-                          : alert.status === 'Verified' 
-                          ? 'border-start border-5 border-success' 
-                          : 'border-start border-5 border-secondary'
-                      }`} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
-                        <div className="d-flex justify-content-between align-items-start mb-3">
-                          <div className="d-flex align-items-center gap-2">
-                            <span className={`badge ${
-                              alert.status === 'Pending' ? 'bg-danger animate-pulse' : alert.status === 'Verified' ? 'bg-success' : 'bg-secondary'
-                            } rounded-pill px-3 py-1.5 fw-bold`}>
-                              {alert.status}
-                            </span>
-                            <span className={`badge bg-light text-dark border rounded-pill px-2.5 py-1.5`}>
-                              Refund: {alert.claimRefund ? alert.refundStatus : 'Not Claimed'}
-                            </span>
+                  {adminSosAlerts.map((alert, index) => {
+                    const caseId = getSosCaseId(alert, index);
+                    return (
+                      <div className="col-12 col-md-6" key={alert._id}>
+                        <div className={`card border-0 shadow-sm rounded-4 p-4 h-100 ${
+                          alert.status === 'Pending' 
+                            ? 'border-start border-5 border-danger' 
+                            : alert.status === 'Verified' 
+                            ? 'border-start border-5 border-success' 
+                            : 'border-start border-5 border-secondary'
+                        }`} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+                          <div className="d-flex justify-content-between align-items-start mb-3">
+                            <div className="d-flex align-items-center gap-2 flex-wrap">
+                              <span className={`badge ${
+                                alert.status === 'Pending' ? 'bg-danger animate-pulse' : alert.status === 'Verified' ? 'bg-success' : 'bg-secondary'
+                              } rounded-pill px-3 py-1.5 fw-bold`}>
+                                {alert.status}
+                              </span>
+                              <span className={`badge bg-light text-dark border rounded-pill px-2.5 py-1.5`}>
+                                ID: {caseId}
+                              </span>
+                              <span className={`badge bg-light text-dark border rounded-pill px-2.5 py-1.5`}>
+                                Refund: {alert.claimRefund ? alert.refundStatus : 'Not Claimed'}
+                              </span>
+                            </div>
+                            <span className="small text-muted font-monospace">{new Date(alert.createdAt).toLocaleString()}</span>
                           </div>
-                          <span className="small text-muted font-monospace">{new Date(alert.createdAt).toLocaleString()}</span>
+
+                          <h5 className="fw-extrabold text-dark mb-3">
+                            🚨 {alert.emergencyType}
+                          </h5>
+
+                          <div className="mb-3 p-3 bg-light rounded-3 text-start small">
+                            <div className="mb-2">
+                              <strong className="text-muted d-block">Worker Details:</strong>
+                              <span className="fw-700 text-dark">{alert.worker?.fullName}</span> ({alert.worker?.phone})
+                            </div>
+                            <div className="mb-2">
+                              <strong className="text-muted d-block">Job Description:</strong>
+                              <span className="fw-700 text-dark">{alert.job?.title}</span> (₹{alert.job?.money})
+                            </div>
+                            <div>
+                              <strong className="text-muted d-block">GPS Coordinates:</strong>
+                              <span className="font-monospace text-danger fw-bold">{alert.latitude}°, {alert.longitude}°</span>
+                            </div>
+                          </div>
+
+                          {alert.status === 'Pending' ? (
+                            <div className="d-flex gap-2 mt-auto pt-3 border-top flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSos({ ...alert, caseId })}
+                                className="btn btn-outline-primary btn-sm rounded-3 fw-bold px-3 py-2"
+                              >
+                                🔍 View Details
+                              </button>
+                              <button
+                                onClick={() => handleVerifySosAlert(alert._id, 'Verified')}
+                                className="btn btn-success btn-sm rounded-3 fw-bold flex-fill py-2"
+                                style={{ background: 'linear-gradient(135deg, #198754, #146c43)', border: 'none' }}
+                              >
+                                {alert.claimRefund ? '✅ Verify Incident (Refund 50%)' : '✅ Verify Incident (No Refund)'}
+                              </button>
+                              <button
+                                onClick={() => handleVerifySosAlert(alert._id, 'Incorrect')}
+                                className="btn btn-outline-danger btn-sm rounded-3 fw-bold flex-fill py-2"
+                              >
+                                ❌ Reject / Flag Alert
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-auto pt-3 border-top d-flex align-items-center justify-content-between text-muted small">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSos({ ...alert, caseId })}
+                                className="btn btn-outline-primary btn-sm rounded-3 fw-bold px-3 py-1.5"
+                              >
+                                🔍 View Details
+                              </button>
+                              <div className="d-flex flex-column align-items-end">
+                                <span>Status Updated by Admin</span>
+                                {alert.status === 'Verified' && (
+                                  <strong className="text-success">
+                                    <i className="bi bi-check-circle-fill me-1"></i>
+                                    {alert.claimRefund ? `Refunded ${alert.refundAmount} Tokens` : 'Verified (No Refund Claimed)'}
+                                  </strong>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-
-                        <h5 className="fw-extrabold text-dark mb-3">
-                          🚨 {alert.emergencyType}
-                        </h5>
-
-                        <div className="mb-3 p-3 bg-light rounded-3 text-start small">
-                          <div className="mb-2">
-                            <strong className="text-muted d-block">Worker Details:</strong>
-                            <span className="fw-700 text-dark">{alert.worker?.fullName}</span> ({alert.worker?.phone})
-                          </div>
-                          <div className="mb-2">
-                            <strong className="text-muted d-block">Job Description:</strong>
-                            <span className="fw-700 text-dark">{alert.job?.title}</span> (₹{alert.job?.money})
-                          </div>
-                          <div>
-                            <strong className="text-muted d-block">GPS Coordinates:</strong>
-                            <span className="font-monospace text-danger fw-bold">{alert.latitude}°, {alert.longitude}°</span>
-                          </div>
-                        </div>
-
-                        {alert.status === 'Pending' ? (
-                          <div className="d-flex gap-2 mt-auto pt-3 border-top">
-                            <button
-                              onClick={() => handleVerifySosAlert(alert._id, 'Verified')}
-                              className="btn btn-success btn-sm rounded-3 fw-bold flex-fill py-2"
-                              style={{ background: 'linear-gradient(135deg, #198754, #146c43)', border: 'none' }}
-                            >
-                              {alert.claimRefund ? '✅ Verify Incident (Refund 50%)' : '✅ Verify Incident (No Refund)'}
-                            </button>
-                            <button
-                              onClick={() => handleVerifySosAlert(alert._id, 'Incorrect')}
-                              className="btn btn-outline-danger btn-sm rounded-3 fw-bold flex-fill py-2"
-                            >
-                              ❌ Reject / Flag Alert
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="mt-auto pt-3 border-top d-flex align-items-center justify-content-between text-muted small">
-                            <span>Status Updated by Admin</span>
-                            {alert.status === 'Verified' && (
-                              <strong className="text-success">
-                                <i className="bi bi-check-circle-fill me-1"></i>
-                                {alert.claimRefund ? `Refunded ${alert.refundAmount} Tokens` : 'Verified (No Refund Claimed)'}
-                              </strong>
-                            )}
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-5 text-muted">
@@ -2137,7 +2337,7 @@ const AdminDashboard = () => {
                       className="form-control rounded-3 p-2.5"
                       id="adminPhone"
                       required
-                      placeholder="e.g. +91 98765-43210"
+                      placeholder="e.g. 98*********"
                       value={adminForm.phone}
                       onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })}
                       style={{ border: '1.5px solid #cbd5e1' }}
@@ -2265,6 +2465,358 @@ const AdminDashboard = () => {
                   </button>
                 </div>
               </form>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reply to Support Ticket Modal ── */}
+      {showReplyModal && replyContact && (
+        <div className="modal fade show d-block animate-fade-in" tabIndex="-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '600px' }}>
+            <div className="modal-content rounded-24 border-0 shadow-lg p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+              
+              {/* Modal Header */}
+              <div className="modal-header border-0 bg-light rounded-4 px-4 py-3 d-flex justify-content-between align-items-center mb-3">
+                <h5 className="modal-title fw-extrabold text-dark d-flex align-items-center gap-2">
+                  <i className="bi bi-reply-all-fill text-primary"></i> Send Official Email Reply
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowReplyModal(false)}></button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="modal-body p-0">
+                {/* From Field (Read-only) */}
+                <div className="mb-3">
+                  <label className="form-label small fw-bold text-muted">From (Website Email)</label>
+                  <input
+                    type="text"
+                    className="form-control rounded-3 bg-light p-2.5 fw-semibold text-dark"
+                    value="quicklaboure@gmail.com"
+                    readOnly
+                    style={{ border: '1.5px solid #cbd5e1' }}
+                  />
+                </div>
+
+                {/* To Field (Read-only) */}
+                <div className="mb-3">
+                  <label className="form-label small fw-bold text-muted">To User</label>
+                  <input
+                    type="text"
+                    className="form-control rounded-3 bg-light p-2.5 fw-semibold text-dark"
+                    value={replyContact.email}
+                    readOnly
+                    style={{ border: '1.5px solid #cbd5e1' }}
+                  />
+                </div>
+
+                {/* Subject Field */}
+                <div className="mb-3">
+                  <label htmlFor="replySubjectInput" className="form-label small fw-bold text-muted">Subject</label>
+                  <input
+                    type="text"
+                    className="form-control rounded-3 p-2.5"
+                    id="replySubjectInput"
+                    value={replySubject}
+                    onChange={(e) => setReplySubject(e.target.value)}
+                    style={{ border: '1.5px solid #cbd5e1' }}
+                  />
+                </div>
+
+                {/* Message Textarea */}
+                <div className="mb-3">
+                  <label htmlFor="replyMessageInput" className="form-label small fw-bold text-muted">Message Body</label>
+                  <textarea
+                    className="form-control rounded-3 p-3"
+                    id="replyMessageInput"
+                    rows="6"
+                    value={replyBody}
+                    onChange={(e) => setReplyBody(e.target.value)}
+                    style={{ border: '1.5px solid #cbd5e1', resize: 'vertical' }}
+                  ></textarea>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer border-0 bg-light rounded-4 py-3 d-flex gap-2 px-4 mt-3">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary flex-fill rounded-3 py-2 fw-bold"
+                  onClick={() => setShowReplyModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary flex-fill rounded-3 py-2 fw-bold d-flex align-items-center justify-content-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', border: 'none' }}
+                  disabled={isSendingReply}
+                  onClick={handleSendReply}
+                >
+                  {isSendingReply ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-send-fill"></i> Send via quicklaboure@gmail.com
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FOR VIEWING INQUIRY DETAILS */}
+      {selectedInquiry && (
+        <div className="modal show d-block animate__animated animate__fadeIn" tabIndex="-1" style={{ background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(6px)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden" style={{ border: '1.5px solid #e8ecf8' }}>
+              
+              {/* Modal Header */}
+              <div className="p-4 text-white" style={{ background: 'linear-gradient(135deg, #0d6efd 0%, #6610f2 100%)' }}>
+                <div className="d-flex justify-content-between align-items-center">
+                  <h5 className="modal-title fw-bold m-0 d-flex align-items-center gap-2">
+                    ✉️ Support Ticket Details
+                  </h5>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setSelectedInquiry(null)}></button>
+                </div>
+                <div className="mt-2 small opacity-75">Inquiry Case Audit and Reference Directory</div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="modal-body p-4 bg-white text-start">
+                
+                {/* Inquiry ID & Date */}
+                <div className="d-flex justify-content-between align-items-center mb-4 p-3 rounded-3" style={{ background: '#f8f9fa', border: '1px solid #e9ecef' }}>
+                  <div>
+                    <span className="small text-muted d-block fw-bold">TICKET REFERENCE ID</span>
+                    <strong className="text-primary fs-5">INQ-{selectedInquiry._id.slice(-6).toUpperCase()}</strong>
+                  </div>
+                  <div className="text-end">
+                    <span className="small text-muted d-block fw-bold">RECEIVED ON</span>
+                    <strong className="text-dark small">{new Date(selectedInquiry.createdAt).toLocaleString()}</strong>
+                  </div>
+                </div>
+
+                {/* Sender Details */}
+                <div className="mb-4">
+                  <h6 className="fw-bold text-muted mb-2.5 small uppercase" style={{ letterSpacing: '0.5px' }}>👤 SENDER PROFILE</h6>
+                  <div className="row g-2">
+                    <div className="col-12 col-sm-6">
+                      <div className="p-2.5 bg-light rounded-3">
+                        <span className="text-muted small d-block">Full Name</span>
+                        <span className="fw-bold text-dark">{selectedInquiry.name}</span>
+                      </div>
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <div className="p-2.5 bg-light rounded-3">
+                        <span className="text-muted small d-block">Email Address</span>
+                        <span className="fw-bold text-dark">{selectedInquiry.email}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subject */}
+                <div className="mb-4">
+                  <h6 className="fw-bold text-muted mb-2 small uppercase" style={{ letterSpacing: '0.5px' }}>📌 INQUIRY SUBJECT</h6>
+                  <div className="p-3 bg-light rounded-3 border">
+                    <strong className="text-dark">{selectedInquiry.subject}</strong>
+                  </div>
+                </div>
+
+                {/* Message */}
+                <div className="mb-2">
+                  <h6 className="fw-bold text-muted mb-2 small uppercase" style={{ letterSpacing: '0.5px' }}>💬 COMPLETE MESSAGE</h6>
+                  <div className="p-3 rounded-3 bg-light border-start border-4 border-primary" style={{ whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto', background: '#fcfcfc', fontSize: '0.92rem', lineHeight: '1.5' }}>
+                    "{selectedInquiry.message}"
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer border-0 bg-light rounded-bottom-4 py-3 d-flex gap-2">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary rounded-3 px-4 fw-bold" 
+                  onClick={() => setSelectedInquiry(null)}
+                >
+                  Close View
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-outline-danger rounded-3 px-4 fw-bold d-flex align-items-center justify-content-center gap-1"
+                  onClick={async () => {
+                    const inquiryId = selectedInquiry._id;
+                    if (window.confirm('Are you absolutely sure you want to delete this support inquiry? This action is irreversible.')) {
+                      try {
+                        await api.delete(`/admin/contacts/${inquiryId}`);
+                        setContacts(contacts.filter(item => item._id !== inquiryId));
+                        setSelectedInquiry(null);
+                        // Refresh stats
+                        const statsRes = await api.get('/admin/stats');
+                        setStats(statsRes);
+                        showClassyAlert('Inquiry deleted successfully.', 'Deleted', 'success');
+                      } catch (err) {
+                        showClassyAlert(err.message || 'Deletion failed', 'Deletion Failed', 'error');
+                      }
+                    }
+                  }}
+                >
+                  <i className="bi bi-trash-fill"></i> Delete Ticket
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-primary flex-fill rounded-3 py-2 fw-bold d-flex align-items-center justify-content-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #0d6efd, #6610f2)', border: 'none' }}
+                  onClick={() => {
+                    const inquiry = selectedInquiry;
+                    setSelectedInquiry(null);
+                    handleOpenReplyModal(inquiry);
+                  }}
+                >
+                  <i className="bi bi-reply-fill"></i> Reply via Email
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FOR VIEWING SOS DETAILS */}
+      {selectedSos && (
+        <div className="modal show d-block animate__animated animate__fadeIn" tabIndex="-1" style={{ background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-dialog-centered modal-lg">
+            <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden" style={{ border: '1.5px solid #fecaca' }}>
+              
+              {/* Modal Header */}
+              <div className="p-4 text-white" style={{ background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)' }}>
+                <div className="d-flex justify-content-between align-items-center">
+                  <h5 className="modal-title fw-bold m-0 d-flex align-items-center gap-2">
+                    🚨 SOS Safety Emergency Alert
+                  </h5>
+                  <button type="button" className="btn-close btn-close-white" onClick={() => setSelectedSos(null)}></button>
+                </div>
+                <div className="mt-2 small opacity-75">Real-time Emergency Location Audit and Verification Desk</div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="modal-body p-4 bg-white text-start" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                
+                {/* Emergency ID & Date */}
+                <div className="d-flex justify-content-between align-items-center mb-4 p-3 rounded-3" style={{ background: '#fff5f5', border: '1px solid #fee2e2' }}>
+                  <div>
+                    <span className="small text-danger d-block fw-bold" style={{ fontSize: '0.75rem' }}>EMERGENCY REFERENCE ID</span>
+                    <strong className="text-danger fs-5">SOS-{selectedSos.caseId}</strong>
+                  </div>
+                  <div className="text-end">
+                    <span className="small text-muted d-block fw-bold" style={{ fontSize: '0.75rem' }}>TRIGGERED ON</span>
+                    <strong className="text-dark small">{new Date(selectedSos.createdAt).toLocaleString()}</strong>
+                  </div>
+                </div>
+
+                <div className="row g-4">
+                  {/* Left Side: Profiles */}
+                  <div className="col-12 col-md-6">
+                    {/* Worker Profile */}
+                    <div className="mb-4">
+                      <h6 className="fw-bold text-danger mb-2.5 small uppercase" style={{ letterSpacing: '0.5px' }}>👷 WORKER IN DISTRESS</h6>
+                      <div className="p-3 bg-light rounded-3">
+                        <div className="fw-bold text-dark fs-6">{selectedSos.worker?.fullName}</div>
+                        <div className="small text-muted mb-2">📞 Phone: {selectedSos.worker?.phone}</div>
+                        <div className="small text-muted">Trade Specialty: <span className="badge bg-secondary">{selectedSos.worker?.occupation}</span></div>
+                      </div>
+                    </div>
+
+                    {/* Job Details */}
+                    <div className="mb-4">
+                      <h6 className="fw-bold text-muted mb-2.5 small uppercase" style={{ letterSpacing: '0.5px' }}>🛠️ ACTIVE ASSIGNED JOB</h6>
+                      <div className="p-3 bg-light rounded-3">
+                        <div className="fw-bold text-dark">{selectedSos.job?.title || 'Quick Repair Service'}</div>
+                        <div className="small text-muted mb-1">Budget Allotted: <strong className="text-success">₹{selectedSos.job?.money}</strong></div>
+                        <div className="small text-muted">Client Contact: {selectedSos.job?.name || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    {/* Refund Audit */}
+                    <div>
+                      <h6 className="fw-bold text-muted mb-2.5 small uppercase" style={{ letterSpacing: '0.5px' }}>🪙 REFUND AUDIT INFORMATION</h6>
+                      <div className="p-3 bg-light rounded-3">
+                        <div className="small text-muted mb-1">Claim Refund: <strong>{selectedSos.claimRefund ? 'Yes' : 'No'}</strong></div>
+                        <div className="small text-muted mb-1">Refund Status: <span className={`badge ${selectedSos.refundStatus === 'Refunded' ? 'bg-success' : 'bg-warning'}`}>{selectedSos.refundStatus}</span></div>
+                        {selectedSos.refundAmount && (
+                          <div className="small text-muted">Refund Amount: <strong>{selectedSos.refundAmount} Tokens</strong></div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Side: Map & Location */}
+                  <div className="col-12 col-md-6">
+                    <h6 className="fw-bold text-danger mb-2.5 small uppercase" style={{ letterSpacing: '0.5px' }}>📍 GPS LIVE LOCATION PATH</h6>
+                    <div className="p-3 bg-light rounded-3 mb-3 border">
+                      <div className="small text-muted mb-2">
+                        <strong>Coordinates:</strong> <span className="font-monospace text-danger fw-bold">{selectedSos.latitude}°, {selectedSos.longitude}°</span>
+                      </div>
+                      <div className="border rounded overflow-hidden shadow-sm bg-white" style={{ height: '220px', position: 'relative' }}>
+                        <iframe
+                          title={`SOS Map - ${selectedSos._id}`}
+                          width="100%"
+                          height="100%"
+                          style={{ border: 'none' }}
+                          src={`https://maps.google.com/maps?q=${selectedSos.latitude},${selectedSos.longitude}&z=15&output=embed`}
+                          allowFullScreen
+                        ></iframe>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer border-0 bg-light rounded-bottom-4 py-3 d-flex gap-2">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary px-4 py-2 rounded-3 fw-bold" 
+                  onClick={() => setSelectedSos(null)}
+                >
+                  Close View
+                </button>
+                {selectedSos.status === 'Pending' && (
+                  <div className="d-flex gap-2 flex-fill">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleVerifySosAlert(selectedSos._id, 'Verified');
+                        setSelectedSos(null);
+                      }}
+                      className="btn btn-success flex-fill rounded-3 py-2 fw-bold"
+                      style={{ background: 'linear-gradient(135deg, #198754, #146c43)', border: 'none' }}
+                    >
+                      {selectedSos.claimRefund ? 'Verify & Refund 50%' : 'Verify Incident'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleVerifySosAlert(selectedSos._id, 'Incorrect');
+                        setSelectedSos(null);
+                      }}
+                      className="btn btn-outline-danger flex-fill rounded-3 py-2 fw-bold"
+                    >
+                      Flag Incorrect
+                    </button>
+                  </div>
+                )}
+              </div>
 
             </div>
           </div>

@@ -8,6 +8,7 @@ import Contact from '../models/Contact.js';
 import Review from '../models/Review.js';
 import SosAlert from '../models/SosAlert.js';
 import Dispute from '../models/Dispute.js';
+import Transaction from '../models/Transaction.js';
 
 const router = express.Router();
 
@@ -166,6 +167,29 @@ router.delete('/contacts/:id', protect, adminCheck, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+// @desc    Reply to a support ticket
+// @route   POST /api/admin/contacts/:id/reply
+// @access  Private (Admin only)
+router.post('/contacts/:id/reply', protect, adminCheck, async (req, res) => {
+  try {
+    const contact = await Contact.findById(req.params.id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Support ticket not found' });
+    }
+    const { from, to, subject, message } = req.body;
+    
+    // Simulate sending email: log it to console or record in the DB
+    console.log(`[EMAIL SIMULATION] Sending email from ${from} to ${to}:`);
+    console.log(`Subject: ${subject}`);
+    console.log(`Body:\n${message}`);
+    
+    res.json({ message: `Email reply successfully dispatched from ${from}!` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 
 // @desc    Get all community reviews
 // @route   GET /api/admin/reviews
@@ -382,6 +406,13 @@ router.post('/sos/:id/verify', protect, adminCheck, async (req, res) => {
             worker.warnings.push(`Warning 1: SOS alert flagged as Incorrect for job "${job.title}". Travel confirmation policy violation.`);
           } else if (worker.policyViolations === 2) {
             worker.walletBalance = Math.max(0, (worker.walletBalance || 0) - 50);
+            await Transaction.create({
+              userId: worker._id,
+              type: 'Incorrect SOS alert penalty',
+              amount: 50,
+              isCredit: false,
+              status: 'Completed',
+            });
             worker.warnings.push(`Violation 2: SOS alert flagged as Incorrect for job "${job.title}". ₹50 penalty deducted from wallet.`);
           } else if (worker.policyViolations >= 3) {
             worker.isSuspended = true;
@@ -440,10 +471,26 @@ router.post('/disputes/:id/resolve', protect, adminCheck, async (req, res) => {
         if (worker) {
           worker.walletBalance = (worker.walletBalance || 0) + 50;
           await worker.save();
+          
+          await Transaction.create({
+            userId: worker._id,
+            type: 'Client no-show visit compensation',
+            amount: 50,
+            isCredit: true,
+            status: 'Completed',
+          });
         }
         if (client) {
           client.walletBalance = Math.max(0, (client.walletBalance || 0) - 50);
           await client.save();
+
+          await Transaction.create({
+            userId: client._id,
+            type: 'Client no-show visit compensation charge',
+            amount: 50,
+            isCredit: false,
+            status: 'Completed',
+          });
         }
         
         job.status = 'Rejected'; // Mark as rejected/cancelled due to no-show
@@ -460,6 +507,14 @@ router.post('/disputes/:id/resolve', protect, adminCheck, async (req, res) => {
           worker.walletBalance = Math.max(0, (worker.walletBalance || 0) - 50);
           worker.policyViolations = (worker.policyViolations || 0) + 1;
           await worker.save();
+
+          await Transaction.create({
+            userId: worker._id,
+            type: 'Dispute resolution penalty',
+            amount: 50,
+            isCredit: false,
+            status: 'Completed',
+          });
         }
         
         job.status = 'Rejected';
@@ -477,10 +532,26 @@ router.post('/disputes/:id/resolve', protect, adminCheck, async (req, res) => {
         if (worker) {
           worker.walletBalance = (worker.walletBalance || 0) + jobWage;
           await worker.save();
+
+          await Transaction.create({
+            userId: worker._id,
+            type: `Job earnings released: ${job.title}`,
+            amount: jobWage,
+            isCredit: true,
+            status: 'Completed',
+          });
         }
         if (client) {
           client.walletBalance = Math.max(0, (client.walletBalance || 0) - jobWage);
           await client.save();
+
+          await Transaction.create({
+            userId: client._id,
+            type: `Job wage paid: ${job.title}`,
+            amount: jobWage,
+            isCredit: false,
+            status: 'Completed',
+          });
         }
         
         job.status = 'Completed';

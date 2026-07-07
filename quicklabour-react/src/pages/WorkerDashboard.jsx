@@ -88,6 +88,7 @@ const WorkerDashboard = () => {
 
   const [hiredJobs, setHiredJobs] = useState([]);
   const [availableJobs, setAvailableJobs] = useState([]);
+  const [dbTransactions, setDbTransactions] = useState([]);
   const [isOnline, setIsOnline] = useState(sessionStorage.getItem('userOnlineStatus') === 'true');
   const [completedCount, setCompletedCount] = useState(() => {
     const val = sessionStorage.getItem('userJobsCompleted');
@@ -112,6 +113,7 @@ const WorkerDashboard = () => {
   const [showAddWalletModal, setShowAddWalletModal] = useState(false);
   const [showQrCodeModal, setShowQrCodeModal] = useState(false);
   const [warnings, setWarnings] = useState([]);
+  const [showWarnings, setShowWarnings] = useState(false);
   const [policyViolations, setPolicyViolations] = useState(0);
 
   // Unified Wallet Hub Modal States
@@ -329,6 +331,16 @@ const WorkerDashboard = () => {
       setDisputes(data);
     } catch (err) {
       console.error('Error fetching disputes:', err);
+    }
+  };
+
+  const fetchTransactions = async () => {
+    try {
+      const data = await api.getWalletTransactions();
+      setDbTransactions(data || []);
+    } catch (err) {
+      console.error("Failed to fetch transactions", err);
+      setDbTransactions(getTransactions());
     }
   };
 
@@ -607,12 +619,17 @@ const WorkerDashboard = () => {
       setAvailableJobs(sortedAvailable);
       await fetchMySosAlerts();
       await fetchDisputes();
+      await fetchTransactions();
     } catch (error) {
       console.error('Error fetching jobs:', error.message);
     } finally {
       isFetchingRef.current = false;
     }
   };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
 
   useEffect(() => {
     let timerId;
@@ -667,8 +684,19 @@ const WorkerDashboard = () => {
         setWalletBalance(user.walletBalance);
         sessionStorage.setItem('userWalletBalance', user.walletBalance);
       }
-      setWarnings(user.warnings || []);
+      const fetchedWarnings = user.warnings || [];
+      setWarnings(fetchedWarnings);
       setPolicyViolations(user.policyViolations || 0);
+
+      // Show policy warnings only once for 10 seconds
+      const hasSeen = sessionStorage.getItem('seen_warnings_policy');
+      if (fetchedWarnings.length > 0 && !hasSeen) {
+        setShowWarnings(true);
+        sessionStorage.setItem('seen_warnings_policy', 'true');
+        setTimeout(() => {
+          setShowWarnings(false);
+        }, 10000);
+      }
 
       if (user.fullName) sessionStorage.setItem('userName', user.fullName);
       if (user.phone) sessionStorage.setItem('userPhone', user.phone);
@@ -854,6 +882,7 @@ const WorkerDashboard = () => {
     };
     txs.unshift(newTx);
     localStorage.setItem(key, JSON.stringify(txs));
+    fetchTransactions();
   };
 
   const handleWithdrawSubmit = async (e) => {
@@ -1242,7 +1271,7 @@ const WorkerDashboard = () => {
           )}
 
           {/* Policy warnings banner */}
-          {warnings && warnings.length > 0 && (
+          {showWarnings && warnings && warnings.length > 0 && (
             <div className="alert alert-danger alert-dismissible fade show rounded-24 border-danger bg-danger bg-opacity-10 text-danger-emphasis mb-4 shadow-sm py-3.5 px-4" role="alert">
               <div className="d-flex align-items-center gap-2 mb-2">
                 <i className="bi bi-exclamation-octagon-fill fs-5 text-danger"></i>
@@ -1256,6 +1285,7 @@ const WorkerDashboard = () => {
               <div className="mt-2.5 small fw-700 text-muted">
                 ⚠️ Repeated timeouts will trigger automatic fines (₹50) and temporary account suspension (7 days).
               </div>
+              <button type="button" className="btn-close" onClick={() => setShowWarnings(false)}></button>
             </div>
           )}
 
@@ -2919,7 +2949,7 @@ const WorkerDashboard = () => {
                         <input
                           type="text"
                           className="form-control rounded-12"
-                          placeholder="e.g. 9876543210@paytm"
+                          placeholder="e.g. 98*********@paytm"
                           value={upiId}
                           onChange={(e) => setUpiId(e.target.value)}
                           required
@@ -3285,14 +3315,14 @@ const WorkerDashboard = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {getTransactions().length === 0 ? (
+                          {dbTransactions.length === 0 ? (
                             <tr>
                               <td colSpan="4" className="text-center py-4 text-muted">
                                 <i className="bi bi-info-circle me-1"></i> No transactions recorded yet.
                               </td>
                             </tr>
                           ) : (
-                            getTransactions().map((tx) => (
+                            dbTransactions.map((tx) => (
                               <tr key={tx.id}>
                                 <td className="py-3 px-3 fw-bold text-dark">
                                   {tx.isCredit ? '📥 ' : '📤 '} {tx.type}

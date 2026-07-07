@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api, LABOUR_INDUSTRIES } from '../utils/api';
 import Tesseract from 'tesseract.js';
@@ -45,11 +45,22 @@ const Login = () => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
 
+  // Sign Up Email States
+  const [signUpEmail, setSignUpEmail] = useState('');
+  const [emailValidationError, setEmailValidationError] = useState('');
+  const [emailStatusMessage, setEmailStatusMessage] = useState('');
+  const [emailStatusColor, setEmailStatusColor] = useState('text-muted');
+  const [isEmailAvailable, setIsEmailAvailable] = useState(false);
+  const emailCheckTimeoutRef = useRef(null);
+
   // OTP Verification States
   const [showOtp, setShowOtp] = useState(false);
   const [mockOtp, setMockOtp] = useState('');
   const [enteredOtp, setEnteredOtp] = useState('');
   const [otpNotification, setOtpNotification] = useState('');
+  const [mockEmailOtp, setMockEmailOtp] = useState('');
+  const [enteredEmailOtp, setEnteredEmailOtp] = useState('');
+  const [emailOtpNotification, setEmailOtpNotification] = useState('');
 
   // Forgot Password States
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -219,6 +230,50 @@ const Login = () => {
     });
   };
 
+  // Handle Email Input Change & Validation with debounced backend availability check
+  const handleEmailChange = (val) => {
+    const cleanVal = val.trim();
+    setSignUpEmail(cleanVal);
+    setEmailValidationError('');
+    setEmailStatusMessage('');
+    setIsEmailAvailable(false);
+
+    if (!cleanVal) return;
+
+    // Check email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanVal)) {
+      setEmailValidationError('❌ Please enter email in valid format.');
+      return;
+    }
+
+    setEmailStatusMessage('🔍 Checking email availability...');
+    setEmailStatusColor('text-muted');
+
+    if (emailCheckTimeoutRef.current) {
+      clearTimeout(emailCheckTimeoutRef.current);
+    }
+
+    emailCheckTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await api.checkEmail(cleanVal);
+        if (res.exists) {
+          setEmailStatusMessage('❌ This email is already registered.');
+          setEmailStatusColor('text-danger');
+          setIsEmailAvailable(false);
+        } else {
+          setEmailStatusMessage('✅ Email is available!');
+          setEmailStatusColor('text-success');
+          setIsEmailAvailable(true);
+        }
+      } catch (err) {
+        console.error(err);
+        setEmailStatusMessage('⚠️ Could not verify email availability at this time.');
+        setEmailStatusColor('text-warning');
+      }
+    }, 500);
+  };
+
   // Login handler
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -259,9 +314,25 @@ const Login = () => {
       return;
     }
 
-    if (!idType) {
+    if (activeTab === 'worker' && !idType) {
       setErrorMessage('❌ Please select an ID Proof Document!');
       return;
+    }
+
+    if (activeTab !== 'industry') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!signUpEmail) {
+        setErrorMessage('❌ Email address is required!');
+        return;
+      }
+      if (!emailRegex.test(signUpEmail)) {
+        setErrorMessage('❌ Please enter email in valid format.');
+        return;
+      }
+      if (!isEmailAvailable) {
+        setErrorMessage('❌ This email address is already in use. Please use a different email.');
+        return;
+      }
     }
 
     if (signUpPassword !== confirmPassword) {
@@ -276,14 +347,30 @@ const Login = () => {
       return;
     }
 
-    // Generate a random 4 digit code
+    // Generate a random 4 digit code for Phone OTP
     const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
     setMockOtp(generatedOtp);
     setShowOtp(true);
     setEnteredOtp('');
-    
+
     // Simulate SMS notification banner
     setOtpNotification(`📱 SMS Received on ${phone}: Your QuickLabour verification OTP is: ${generatedOtp}`);
+
+    // Generate a random 4 digit code for Email OTP
+    const generatedEmailOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    setMockEmailOtp(generatedEmailOtp);
+    setEnteredEmailOtp('');
+
+    // Call backend to log the simulated email OTP
+    api.sendEmailOtp(signUpEmail).then(res => {
+      setEmailOtpNotification(`📧 Email Received on ${signUpEmail}: Your QuickLabour verification OTP is: ${res.otp || generatedEmailOtp}`);
+      if (res.otp) {
+        setMockEmailOtp(res.otp);
+      }
+    }).catch(err => {
+      console.warn("Backend email OTP simulation call failed, falling back to local simulation.", err);
+      setEmailOtpNotification(`📧 Email Received on ${signUpEmail}: Your QuickLabour verification OTP is: ${generatedEmailOtp}`);
+    });
   };
 
   // OTP Verification Submit Handler
@@ -292,61 +379,67 @@ const Login = () => {
     setErrorMessage('');
     setSuccessMessage('');
 
-    if (enteredOtp === mockOtp) {
-      try {
-        setSuccessMessage('⏳ Encrypting files and registering...');
-        
-        let avatarBase64 = '';
-        let idFileBase64 = '';
+    if (enteredOtp !== mockOtp) {
+      setErrorMessage('❌ Incorrect Phone OTP! Please check the code in the SMS Notification banner.');
+      return;
+    }
+    if (enteredEmailOtp !== mockEmailOtp) {
+      setErrorMessage('❌ Incorrect Email OTP! Please check the code in the Email Notification banner.');
+      return;
+    }
 
-        if (photo) {
-          avatarBase64 = await convertToBase64(photo);
-        }
-        if (idFile) {
-          idFileBase64 = await convertToBase64(idFile);
-        }
+    try {
+      setSuccessMessage('⏳ Encrypting files and registering...');
+      
+      let avatarBase64 = '';
+      let idFileBase64 = '';
 
-        const isIndustry = activeTab === 'industry';
-        const userData = {
-          fullName: isIndustry ? companyName : fullName,
-          email: phone.replace(/[^0-9]/g, ''),
-          password: signUpPassword,
-          phone,
-          address,
-          latitude,
-          longitude,
-          role: isIndustry ? 'client' : activeTab,
-          occupation: isIndustry
-            ? `Industry: ${companyName} (${industryType})`
-            : activeTab === 'worker' ? occupation : '',
-          avatar: avatarBase64 || (isIndustry
-            ? `https://ui-avatars.com/api/?name=${encodeURIComponent(companyName)}&background=0a2540&color=f5a623&size=150&bold=true`
-            : undefined),
-          idType,
-          idFile: idFileBase64,
-        };
-
-        const res = await api.register(userData);
-
-        setSuccessMessage(`OTP verified. Account created successfully. Redirecting to your dashboard...`);
-        setOtpNotification('');
-        setShowOtp(false);
-
-        // Redirect after 2 seconds
-        setTimeout(() => {
-          if (activeTab === 'industry') {
-            navigate('/industry-dashboard');
-          } else if (res.role === 'client') {
-            navigate('/client-dashboard');
-          } else {
-            navigate('/worker-dashboard');
-          }
-        }, 2000);
-      } catch (error) {
-        setErrorMessage(`❌ Registration failed: ${error.message}`);
+      if (photo) {
+        avatarBase64 = await convertToBase64(photo);
       }
-    } else {
-      setErrorMessage('❌ Incorrect OTP! Please check the code in the SMS Notification banner and try again.');
+      if (idFile) {
+        idFileBase64 = await convertToBase64(idFile);
+      }
+
+      const isIndustry = activeTab === 'industry';
+      const userData = {
+        fullName: isIndustry ? companyName : fullName,
+        email: isIndustry ? phone.replace(/[^0-9]/g, '') : signUpEmail,
+        password: signUpPassword,
+        phone,
+        address,
+        latitude,
+        longitude,
+        role: isIndustry ? 'client' : activeTab,
+        occupation: isIndustry
+          ? `Industry: ${companyName} (${industryType})`
+          : activeTab === 'worker' ? occupation : '',
+        avatar: avatarBase64 || (isIndustry
+          ? `https://ui-avatars.com/api/?name=${encodeURIComponent(companyName)}&background=0a2540&color=f5a623&size=150&bold=true`
+          : undefined),
+        idType,
+        idFile: idFileBase64,
+      };
+
+      const res = await api.register(userData);
+
+      setSuccessMessage(`OTP verified. Account created successfully. Redirecting to your dashboard...`);
+      setOtpNotification('');
+      setEmailOtpNotification('');
+      setShowOtp(false);
+
+      // Redirect after 2 seconds
+      setTimeout(() => {
+        if (activeTab === 'industry') {
+          navigate('/industry-dashboard');
+        } else if (res.role === 'client') {
+          navigate('/client-dashboard');
+        } else {
+          navigate('/worker-dashboard');
+        }
+      }, 2000);
+    } catch (error) {
+      setErrorMessage(`❌ Registration failed: ${error.message}`);
     }
   };
 
@@ -354,9 +447,24 @@ const Login = () => {
   const handleResendOtp = () => {
     setErrorMessage('');
     setEnteredOtp('');
+    setEnteredEmailOtp('');
+    
+    // Resend Phone OTP
     const newOtp = Math.floor(1000 + Math.random() * 9000).toString();
     setMockOtp(newOtp);
     setOtpNotification(`📱 SMS Received on ${phone}: Your new QuickLabour verification OTP is: ${newOtp}`);
+
+    // Resend Email OTP
+    const newEmailOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    setMockEmailOtp(newEmailOtp);
+    api.sendEmailOtp(signUpEmail).then(res => {
+      setEmailOtpNotification(`📧 Email Received on ${signUpEmail}: Your new QuickLabour verification OTP is: ${res.otp || newEmailOtp}`);
+      if (res.otp) {
+        setMockEmailOtp(res.otp);
+      }
+    }).catch(err => {
+      setEmailOtpNotification(`📧 Email Received on ${signUpEmail}: Your new QuickLabour verification OTP is: ${newEmailOtp}`);
+    });
   };
 
   // Fetch current GPS location and automatically reverse geocode to human address
@@ -491,20 +599,32 @@ const Login = () => {
                 <div className="bg-primary bg-opacity-10 text-primary p-3 rounded-circle d-inline-flex mb-3" style={{ fontSize: '2rem', width: '64px', height: '64px', alignItems: 'center', justifyContent: 'center' }}>
                   <i className="bi bi-shield-lock-fill text-primary"></i>
                 </div>
-                <h4 className="fw-800" style={{ color: '#0a2540', fontWeight: 800 }}>Phone OTP Verification</h4>
+                <h4 className="fw-800" style={{ color: '#0a2540', fontWeight: 800 }}>Dual OTP Verification</h4>
                 <p className="text-muted small">
-                  We have simulated sending a 4-digit verification code to your registered contact number <strong>{phone}</strong>.
+                  We have simulated sending a 4-digit verification code to your registered contact number <strong>{phone}</strong> and email <strong>{signUpEmail}</strong>.
                 </p>
               </div>
 
               {/* Simulated SMS Notification banner */}
               {otpNotification && (
-                <div className="alert alert-warning py-3 px-3 rounded-16 border-warning mb-4 shadow-sm" role="alert" style={{ fontSize: '0.88rem', borderLeft: '5px solid #ffc107' }}>
+                <div className="alert alert-warning py-3 px-3 rounded-16 border-warning mb-2 shadow-sm" role="alert" style={{ fontSize: '0.88rem', borderLeft: '5px solid #ffc107' }}>
                   <div className="fw-800 text-dark mb-1" style={{ fontWeight: 800 }}>
                     <i className="bi bi-chat-left-dots-fill text-warning me-2"></i>Simulated SMS Banner:
                   </div>
                   <div className="font-monospace text-dark bg-white p-2 rounded border mt-2 small" style={{ fontWeight: 600 }}>
                     {otpNotification}
+                  </div>
+                </div>
+              )}
+
+              {/* Simulated Email Notification banner */}
+              {emailOtpNotification && (
+                <div className="alert alert-info py-3 px-3 rounded-16 border-info mb-4 shadow-sm" role="alert" style={{ fontSize: '0.88rem', borderLeft: '5px solid #0dcaf0' }}>
+                  <div className="fw-800 text-dark mb-1" style={{ fontWeight: 800 }}>
+                    <i className="bi bi-envelope-fill text-info me-2"></i>Simulated Email Banner:
+                  </div>
+                  <div className="font-monospace text-dark bg-white p-2 rounded border mt-2 small" style={{ fontWeight: 600 }}>
+                    {emailOtpNotification}
                   </div>
                 </div>
               )}
@@ -516,18 +636,32 @@ const Login = () => {
               )}
 
               <form onSubmit={handleVerifyOtp}>
-                <div className="form-input-group mb-4 text-center">
-                  <label className="text-muted small fw-700 mb-2">ENTER 4-DIGIT VERIFICATION CODE</label>
+                <div className="form-input-group mb-3 text-center">
+                  <label className="text-muted small fw-700 mb-1">ENTER 4-DIGIT PHONE OTP</label>
                   <input
                     type="text"
                     maxLength="4"
-                    className="form-control text-center font-monospace fw-800 fs-3"
-                    style={{ letterSpacing: '0.5rem', height: '54px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
+                    className="form-control text-center font-monospace fw-800 fs-4"
+                    style={{ letterSpacing: '0.5rem', height: '48px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
                     placeholder="••••"
                     value={enteredOtp}
                     onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
                     required
                     autoFocus
+                  />
+                </div>
+
+                <div className="form-input-group mb-4 text-center">
+                  <label className="text-muted small fw-700 mb-1">ENTER 4-DIGIT EMAIL OTP</label>
+                  <input
+                    type="text"
+                    maxLength="4"
+                    className="form-control text-center font-monospace fw-800 fs-4"
+                    style={{ letterSpacing: '0.5rem', height: '48px', border: '2px solid #cbd5e1', borderRadius: '12px' }}
+                    placeholder="••••"
+                    value={enteredEmailOtp}
+                    onChange={(e) => setEnteredEmailOtp(e.target.value.replace(/\D/g, ''))}
+                    required
                   />
                 </div>
 
@@ -555,6 +689,9 @@ const Login = () => {
                       setErrorMessage('');
                       setSuccessMessage('');
                       setEnteredOtp('');
+                      setEnteredEmailOtp('');
+                      setOtpNotification('');
+                      setEmailOtpNotification('');
                     }}
                   >
                     ← Back to Registration Details
@@ -613,7 +750,7 @@ const Login = () => {
                     <label>Email Address or Phone Number</label>
                     <input
                       type="text"
-                      placeholder="e.g. 9876543210 or your email..."
+                      placeholder="e.g. 98********* or your email..."
                       value={forgotEmailOrPhone}
                       onChange={(e) => setForgotEmailOrPhone(e.target.value)}
                       required
@@ -696,7 +833,7 @@ const Login = () => {
                     <label>New Password</label>
                     <input
                       type={showForgotNewPassword ? "text" : "password"}
-                      placeholder="Enter new password..."
+                      placeholder="Enter password"
                       value={forgotNewPassword}
                       onChange={(e) => setForgotNewPassword(e.target.value)}
                       required
@@ -718,7 +855,7 @@ const Login = () => {
                     <label>Confirm New Password</label>
                     <input
                       type={showForgotConfirmPassword ? "text" : "password"}
-                      placeholder="Repeat new password..."
+                      placeholder="Enter password"
                       value={forgotConfirmPassword}
                       onChange={(e) => setForgotConfirmPassword(e.target.value)}
                       required
@@ -910,7 +1047,7 @@ const Login = () => {
                         <label>Contact Number</label>
                         <input
                           type="tel"
-                          placeholder="e.g. 9876543210"
+                          placeholder="e.g. 98*********"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                           required
@@ -918,6 +1055,33 @@ const Login = () => {
                         />
                       </div>
                     </div>
+
+                    {/* Email Address */}
+                    {activeTab !== 'industry' && (
+                    <div className="col-12">
+                      <div className="form-input-group mb-0">
+                        <label>Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="e.g. priya.sharma@example.com"
+                          value={signUpEmail}
+                          onChange={(e) => handleEmailChange(e.target.value)}
+                          required={activeTab !== 'industry'}
+                          autoComplete="new-password"
+                        />
+                        {emailValidationError && (
+                          <div className="text-danger small mt-1" style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                            {emailValidationError}
+                          </div>
+                        )}
+                        {emailStatusMessage && (
+                          <div className={`${emailStatusColor} small mt-1`} style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                            {emailStatusMessage}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    )}
 
                     {/* Address, Occupation, ID, Password — hidden when industry tab active */}
                     {activeTab !== 'industry' && (<>
@@ -1003,48 +1167,52 @@ const Login = () => {
                       </div>
                     )}
 
-                    {/* ID Card Selection */}
-                    <div className="col-md-6">
-                      <div className="form-input-group mb-0">
-                        <label>Select ID Proof Document</label>
-                        <select className="form-select border-1.5 p-2 rounded-12 text-muted" style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }} value={idType} onChange={(e) => handleIdTypeChange(e.target.value)} required>
-                          <option value="">-- Choose ID Document --</option>
-                          <option value="Aadhaar">Aadhaar Card (UIDAI)</option>
-                          <option value="PAN">PAN Card (Income Tax)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* ID Verification File Upload */}
-                    <div className="col-md-6">
-                      <div className="form-input-group mb-0">
-                        <label>Upload ID Card Proof</label>
-                        <div className="file-upload-wrapper" style={{ height: '50px', padding: '10px 15px', position: 'relative' }}>
-                          {isScanningID ? (
-                            <span className="small text-primary text-truncate d-flex align-items-center gap-2 fw-700">
-                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: '14px', height: '14px' }}></span>
-                              🔍 Scanning ID Card...
-                            </span>
-                          ) : (
-                            <span className="small text-muted text-truncate d-block fw-700">
-                              {idFileName ? `✔️ ${idFileName.substring(0, 18)}...` : '📎 Upload ID PDF/Image'}
-                            </span>
-                          )}
-                          <input type="file" accept="image/*,application/pdf" className="file-upload-input" onChange={handleIdFileChange} required disabled={isScanningID} />
-                        </div>
-                        {idFileError && (
-                          <div className="text-danger small mt-1" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
-                            {idFileError}
+                    {activeTab === 'worker' && (
+                      <>
+                        {/* ID Card Selection */}
+                        <div className="col-md-6">
+                          <div className="form-input-group mb-0">
+                            <label>Select ID Proof Document</label>
+                            <select className="form-select border-1.5 p-2 rounded-12 text-muted" style={{ height: '50px', fontSize: '0.95rem', border: '1.5px solid #e2e8f0' }} value={idType} onChange={(e) => handleIdTypeChange(e.target.value)} required>
+                              <option value="">-- Choose ID Document --</option>
+                              <option value="Aadhaar">Aadhaar Card (UIDAI)</option>
+                              <option value="PAN">PAN Card (Income Tax)</option>
+                            </select>
                           </div>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+
+                        {/* ID Verification File Upload */}
+                        <div className="col-md-6">
+                          <div className="form-input-group mb-0">
+                            <label>Upload ID Card Proof</label>
+                            <div className="file-upload-wrapper" style={{ height: '50px', padding: '10px 15px', position: 'relative' }}>
+                              {isScanningID ? (
+                                <span className="small text-primary text-truncate d-flex align-items-center gap-2 fw-700">
+                                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: '14px', height: '14px' }}></span>
+                                  🔍 Scanning ID Card...
+                                </span>
+                              ) : (
+                                <span className="small text-muted text-truncate d-block fw-700">
+                                  {idFileName ? `✔️ ${idFileName.substring(0, 18)}...` : '📎 Upload ID PDF/Image'}
+                                </span>
+                              )}
+                              <input type="file" accept="image/*,application/pdf" className="file-upload-input" onChange={handleIdFileChange} required disabled={isScanningID} />
+                            </div>
+                            {idFileError && (
+                              <div className="text-danger small mt-1" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
+                                {idFileError}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     {/* Password */}
                     <div className="col-md-6">
                       <div className="form-input-group mb-0 position-relative">
                         <label>Password</label>
-                        <input type={showSignUpPassword ? "text" : "password"} placeholder="At least 8 chars with uppercase, lowercase, number & symbol..." value={signUpPassword} onChange={(e) => setSignUpPassword(e.target.value)} required style={{ paddingRight: '45px' }} autoComplete="new-password" />
+                        <input type={showSignUpPassword ? "text" : "password"} placeholder="Enter password" value={signUpPassword} onChange={(e) => setSignUpPassword(e.target.value)} required style={{ paddingRight: '45px' }} autoComplete="new-password" />
                         <button type="button" className="btn position-absolute border-0 bg-transparent" style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }} onClick={() => setShowSignUpPassword(!showSignUpPassword)}>
                           <i className={`bi ${showSignUpPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
                         </button>
@@ -1056,7 +1224,7 @@ const Login = () => {
                     <div className="col-md-6">
                       <div className="form-input-group mb-0 position-relative">
                         <label>Confirm Password</label>
-                        <input type={showConfirmPassword ? "text" : "password"} placeholder="Repeat password..." value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required style={{ paddingRight: '45px' }} autoComplete="new-password" />
+                        <input type={showConfirmPassword ? "text" : "password"} placeholder="Enter password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required style={{ paddingRight: '45px' }} autoComplete="new-password" />
                         <button type="button" className="btn position-absolute border-0 bg-transparent" style={{ right: '10px', top: '32px', zIndex: 10, padding: '5px' }} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
                           <i className={`bi ${showConfirmPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'} text-muted fs-5`}></i>
                         </button>
@@ -1101,7 +1269,7 @@ const Login = () => {
                     <label>Email Address or Phone Number</label>
                     <input
                       type="text"
-                      placeholder={activeTab === 'client' ? "e.g. 9874563210 or client123" : "e.g. 9874563210 or worker123"}
+                      placeholder={activeTab === 'client' ? "e.g. 98********* or email..." : "e.g. 98********* or email..."}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -1113,7 +1281,7 @@ const Login = () => {
                     <label>Password</label>
                     <input
                       type={showPassword ? "text" : "password"}
-                      placeholder="Enter password (e.g. client123 / worker123)..."
+                      placeholder="Enter password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required

@@ -71,6 +71,20 @@ export const api = {
   },
 
   // Auth endpoints
+  checkEmail: async (email) => {
+    return request('/auth/check-email', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  sendEmailOtp: async (email) => {
+    return request('/auth/send-email-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
   login: async (email, password, role) => {
     const data = await request('/auth/login', {
       method: 'POST',
@@ -428,6 +442,10 @@ export const api = {
     return request(`/admin/disputes/${disputeId}`, {
       method: 'DELETE',
     });
+  },
+
+  getWalletTransactions: async () => {
+    return request('/auth/wallet/transactions');
   }
 };
 

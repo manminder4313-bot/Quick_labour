@@ -2,6 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import User from '../models/User.js';
 import Admin from '../models/Admin.js';
+import Transaction from '../models/Transaction.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -95,6 +96,14 @@ router.post('/verify-and-credit', protect, async (req, res) => {
       worker.tokens = (worker.tokens || 0) + tokensToAdd;
       await worker.save();
 
+      await Transaction.create({
+        userId: worker._id,
+        type: `Subscription (${planType.toUpperCase()})`,
+        amount: cost,
+        isCredit: false,
+        status: 'Completed',
+      });
+
       // Automatically add subscription money to Admin wallet
       await Admin.updateMany({}, { $inc: { walletBalance: cost } });
 
@@ -121,6 +130,14 @@ router.post('/verify-and-credit', protect, async (req, res) => {
 
     worker.tokens = (worker.tokens || 0) + tokensToAdd;
     await worker.save();
+
+    await Transaction.create({
+      userId: worker._id,
+      type: `Subscription (${planType.toUpperCase()})`,
+      amount: cost,
+      isCredit: false,
+      status: 'Completed',
+    });
 
     // Automatically add subscription money to Admin wallet
     await Admin.updateMany({}, { $inc: { walletBalance: cost } });

@@ -13,6 +13,7 @@ import ChatWidget from '../components/ChatWidget';
 
 const ClientDashboard = () => {
   const [dbJobs, setDbJobs] = useState([]);
+  const [dbTransactions, setDbTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hireMessage, setHireMessage] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active' or 'past'
@@ -318,6 +319,20 @@ const ClientDashboard = () => {
     }
   };
 
+  const fetchTransactions = async () => {
+    try {
+      const data = await api.getWalletTransactions();
+      setDbTransactions(data || []);
+    } catch (err) {
+      console.error("Failed to fetch transactions", err);
+      setDbTransactions(getTransactions());
+    }
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
   useEffect(() => {
     let timerId;
     let isActive = true;
@@ -328,7 +343,7 @@ const ClientDashboard = () => {
         const { version } = await api.getJobsStateVersion();
         if (version !== localVersionRef.current) {
           localVersionRef.current = version;
-          await Promise.all([fetchJobs(), fetchProfile()]);
+          await Promise.all([fetchJobs(), fetchProfile(), fetchTransactions()]);
         }
       } catch (err) {
         console.error("Failed to check state version:", err);
@@ -542,6 +557,7 @@ const ClientDashboard = () => {
     };
     txs.unshift(newTx);
     localStorage.setItem(key, JSON.stringify(txs));
+    fetchTransactions();
   };
 
   const handleOpenScanModal = async () => {
@@ -2080,7 +2096,7 @@ const ClientDashboard = () => {
                         <input
                           type="text"
                           className="form-control rounded-12"
-                          placeholder="e.g. 9876543210@paytm"
+                          placeholder="e.g. 98*********@paytm"
                           value={upiId}
                           onChange={(e) => setUpiId(e.target.value)}
                           required
@@ -2446,14 +2462,14 @@ const ClientDashboard = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {getTransactions().length === 0 ? (
+                          {dbTransactions.length === 0 ? (
                             <tr>
                               <td colSpan="4" className="text-center py-4 text-muted">
                                 <i className="bi bi-info-circle me-1"></i> No transactions recorded yet.
                               </td>
                             </tr>
                           ) : (
-                            getTransactions().map((tx) => (
+                            dbTransactions.map((tx) => (
                               <tr key={tx.id}>
                                 <td className="py-3 px-3 fw-bold text-dark">
                                   {tx.isCredit ? '📥 ' : '📤 '} {tx.type}

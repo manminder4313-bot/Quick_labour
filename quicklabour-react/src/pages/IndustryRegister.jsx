@@ -251,7 +251,7 @@ const IndustryRegister = () => {
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Business Phone *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-telephone" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                      <input type="text" style={inputStyle('phone')} placeholder="e.g. 9876543210" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, ''))} />
+                      <input type="text" style={inputStyle('phone')} placeholder="e.g. 98*********" value={form.phone} onChange={e => update('phone', e.target.value.replace(/\D/g, ''))} />
                     </div>
                     {errors.phone && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.phone}</span>}
                   </div>
@@ -286,7 +286,7 @@ const IndustryRegister = () => {
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Password *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-lock" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                      <input type={showPassword ? 'text' : 'password'} style={inputStyle('password')} placeholder="Min 8 chars, 1 uppercase, 1 number, 1 symbol" value={form.password} onChange={e => update('password', e.target.value)} />
+                      <input type={showPassword ? 'text' : 'password'} style={inputStyle('password')} placeholder="Enter password" value={form.password} onChange={e => update('password', e.target.value)} />
                       <button type="button" onClick={() => setShowPassword(p => !p)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0 }}>
                         <i className={`bi bi-eye${showPassword ? '-slash' : ''}`} />
                       </button>
@@ -311,7 +311,7 @@ const IndustryRegister = () => {
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>Confirm Password *</label>
                     <div style={{ position: 'relative' }}>
                       <i className="bi bi-shield-lock" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                      <input type="password" style={inputStyle('confirmPassword')} placeholder="Re-enter your password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} />
+                      <input type="password" style={inputStyle('confirmPassword')} placeholder="Enter password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} />
                     </div>
                     {errors.confirmPassword && <span style={{ color: 'var(--danger)', fontSize: '0.75rem' }}>{errors.confirmPassword}</span>}
                     {form.confirmPassword && form.password !== form.confirmPassword && (

@@ -6,6 +6,7 @@ import Message from '../models/Message.js';
 import Review from '../models/Review.js';
 import SosAlert from '../models/SosAlert.js';
 import Dispute from '../models/Dispute.js';
+import Transaction from '../models/Transaction.js';
 
 const router = express.Router();
 
@@ -507,6 +508,14 @@ router.put('/:id/complete', protect, async (req, res) => {
       }
       clientUser.walletBalance = (clientUser.walletBalance || 0) - amount;
       await clientUser.save();
+
+      await Transaction.create({
+        userId: clientUser._id,
+        type: `Payment for Job: ${job.title}`,
+        amount: amount,
+        isCredit: false,
+        status: 'Completed',
+      });
     }
 
     // 1. Update job status to 'Completed'
@@ -519,6 +528,14 @@ router.put('/:id/complete', protect, async (req, res) => {
       // Credit worker wallet if paid online
       if (paymentMode === 'online') {
         worker.walletBalance = (worker.walletBalance || 0) + amount;
+        
+        await Transaction.create({
+          userId: worker._id,
+          type: `Earnings for Job: ${job.title}`,
+          amount: amount,
+          isCredit: true,
+          status: 'Completed',
+        });
       }
       // Ensure rating is bounded correctly within 1 to 5 stars
       let ratingVal = Number(rating) || 5;
@@ -780,6 +797,13 @@ router.post('/:id/travel-timeout', protect, async (req, res) => {
         penaltyResult = 'warning';
       } else if (worker.policyViolations === 2) {
         worker.walletBalance = Math.max(0, (worker.walletBalance || 0) - 50);
+        await Transaction.create({
+          userId: worker._id,
+          type: 'Auto-cancellation penalty',
+          amount: 50,
+          isCredit: false,
+          status: 'Completed',
+        });
         worker.warnings.push(`Violation 2: Failed to start travel within 15 minutes for job "${job.title}". ₹50 penalty deducted from wallet.`);
         penaltyResult = 'fine';
       } else if (worker.policyViolations >= 3) {

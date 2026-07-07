@@ -302,7 +302,7 @@ const IndustryDashboard = () => {
                   <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {[
                       { label: 'Company / Industry Name', key: 'companyName', placeholder: 'e.g. Sharma Construction Ltd.', icon: 'bi-building' },
-                      { label: 'Contact Number', key: 'contact', placeholder: '+91 98765 43210', icon: 'bi-telephone' },
+                      { label: 'Contact Number', key: 'contact', placeholder: 'e.g. 98*********', icon: 'bi-telephone' },
                       { label: 'Work Location / Site Address', key: 'location', placeholder: 'e.g. Andheri East, Mumbai', icon: 'bi-geo-alt' },
                       { label: 'Start Date', key: 'startDate', placeholder: '', icon: 'bi-calendar', type: 'date' },
                     ].map(({ label, key, placeholder, icon, type }) => (
